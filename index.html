@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Chosen Palette: Indigo, Emerald, Rose -->
+    <!-- Application Structure Plan: A single-page dashboard. A 3-column grid layout (1 for controls, 2 for data). The left column (Controls) is sticky and contains Admin, Staff, and User login/controls. This is task-oriented and separates actions from viewing. The right column (Data) shows total counts and the main roster, which is a grid of "Batch Cards". This is a thematic structure. User flow: 1. (Optional) Admin/Staff login to unlock special panels/actions. 2. Select Gender (Boy/Girl) to filter the *entire* view. 3. Select Date to view that day's roster. 4. (User) Login to update personal status. 5. (Staff) Click status badges to mark as 'Served'. This structure was chosen to handle multiple user roles (Admin, Staff, User) and complex data (date-based, gender-based) in one clear, interactive view, prioritizing ease of use for the most common task (viewing the roster). -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Daily Lunch/Dinner Totals -> Goal: Inform (At a glance) -> Viz: HTML "Stat Cards" -> Interaction: Updates on Date/Gender change -> Justification: Quick summary for admin/staff.
+        - Report Info: User List -> Goal: Organize/Inform -> Viz: HTML Tables inside "Batch Cards" (Grid Layout) -> Interaction: Filtered by Gender/Date. Highlights current user. Shows status. -> Justification: Groups users logically by batch, matching the report's structure but making it dynamic.
+        - Report Info: User Status (L/D) -> Goal: Inform/Compare -> Viz: HTML Badges (color-coded) -> Interaction: (Staff) Click to change to 'Served'. (User) Updated via control panel. -> Justification: Clear visual cue for status.
+        - Report Info: User Deposit -> Goal: Inform -> Viz: Text in table -> Interaction: (Admin) Updated via control panel. -> Justification: Simple display for financial info.
+        - Report Info: Monthly Totals -> Goal: Compare (Trends) -> Viz: Text in table (L: X, D: Y) -> Interaction: Recalculates on status update/month change. -> Justification: Provides per-person summary without a complex chart.
+        - Report Info: User Update -> Goal: Input -> Viz: HTML Form (Dropdowns, Checkboxes) -> Interaction: Dynamically populated dropdowns (Batch -> Name). -> Justification: Logical flow for user input.
+        - Report Info: Admin/Staff Actions -> Goal: Input/Task -> Viz: Modal Login, Hidden Panels -> Interaction: Login unlocks panels (Add User, Update Deposit) or new UI (Serve buttons). -> Justification: Securely hides sensitive actions from regular users.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <title>SMC Meal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            addDoc, 
+            onSnapshot, 
+            doc, 
+            updateDoc, 
+            getDocs,
+            query,
+            setLogLevel,
+            setDoc,
+            getDoc 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyApOnhZJ8HkpQhKSiPK2AvdRtSP5ddDcrI",
+          authDomain: "new-meal-28d9e.firebaseapp.com",
+          projectId: "new-meal-28d9e",
+          storageBucket: "new-meal-28d9e.firebasestorage.app",
+          messagingSenderId: "165343467753",
+          appId: "1:165343467753:web:41b4d4dd2a3768e410f878",
+          measurementId: "G-ZM4DB245J9"
+        };
+        
+        let db, auth, userId;
+        const usersCollectionPath = "roster-users";
+        const statusCollectionPath = "roster-status-by-date";
+        const auditLogCollectionPath = "roster-audit-log";
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setLogLevel('Debug');
+            console.log("Firebase Initialized with User's Config. Project ID:", firebaseConfig.projectId);
+
+        } catch (error) {
+            console.error("Firebase Initialization Error:", error.message);
+            document.getElementById('app-content').innerHTML = `
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
+                  <strong class="font-bold">Error!</strong>
+                  <span class="block sm:inline">Firebase initialize hote shomossha hocche. Config thik ache kina check korun.</span>
+                </div>`;
+            document.getElementById('loading-spinner').classList.add('hidden');
+        }
+        
+        let currentUserDocId = null;
+        let isLoggedIn = false;
+        let isAdminLoggedIn = false;
+        let isStaffLoggedIn = false; 
+        const BATCHES = ["10", "11", "12", "13", "14"];
+        let currentViewGender = 'Boy'; 
+
+        let selectedDate = getTodayDateString();
+        
+        let allUsersData = { users: [], grouped: {} }; 
+        let currentStatusData = {}; 
+        let currentMonthlyTotals = {}; 
+        
+        let userListenerUnsubscribe = null;
+        let statusListenerUnsubscribe = null;
+        
+        let isCalculatingTotals = false; 
+        let isCarryingOver = false; 
+
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const appContent = document.getElementById('app-content');
+        const authStatus = document.getElementById('auth-status');
+        
+        const mainControls = document.getElementById('main-controls');
+        const mainRoster = document.getElementById('main-roster');
+        
+        const datePicker = document.getElementById('date-picker');
+        
+        const totalLunchCountEl = document.getElementById('total-lunch-count');
+        const totalDinnerCountEl = document.getElementById('total-dinner-count');
+        
+        const boysViewBtn = document.getElementById('boys-view-btn');
+        const girlsViewBtn = document.getElementById('girls-view-btn');
+        const genderToggleSection = document.getElementById('gender-toggle-section'); 
+        
+        const adminLoginBtn = document.getElementById('admin-login-btn');
+        const adminModal = document.getElementById('admin-login-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const adminLoginForm = document.getElementById('admin-login-form');
+        const adminLoginError = document.getElementById('admin-login-error');
+        const adminSection = document.getElementById('admin-section');
+        const adminLogoutBtn = document.getElementById('admin-logout-btn');
+
+        const staffLoginBtn = document.getElementById('staff-login-btn');
+        const staffModal = document.getElementById('staff-login-modal');
+        const closeStaffModalBtn = document.getElementById('close-staff-modal-btn');
+        const staffLoginForm = document.getElementById('staff-login-form');
+        const staffLoginError = document.getElementById('staff-login-error');
+        const staffLogoutBtn = document.getElementById('staff-logout-btn');
+
+        const addUserForm = document.getElementById('add-user-form');
+        const newUserNameInput = document.getElementById('new-user-name');
+        const newUserBatchSelect = document.getElementById('new-user-batch');
+        const newUserDepositInput = document.getElementById('new-user-deposit');
+        const addUserMessage = document.getElementById('add-user-message');
+
+        const adminDepositForm = document.getElementById('admin-deposit-form');
+        const adminDepositBatch = document.getElementById('admin-deposit-batch'); 
+        const adminDepositName = document.getElementById('admin-deposit-name');   
+        const adminDepositAmount = document.getElementById('admin-deposit-amount');
+        const adminDepositMessage = document.getElementById('admin-deposit-message');
+
+        const userLoginBatch = document.getElementById('user-login-batch'); 
+        const userLoginName = document.getElementById('user-login-name');   
+        const updateSection = document.getElementById('update-section');
+        const statusLunchCheckbox = document.getElementById('status-lunch');
+        const statusDinnerCheckbox = document.getElementById('status-dinner');
+        const saveStatusBtn = document.getElementById('save-status-btn');
+        const saveMessage = document.getElementById('save-message');
+        
+        const rosterDisplayArea = document.getElementById('roster-display-area');
+        const downloadRosterBtn = document.getElementById('download-roster-btn');
+        const rosterTitle = document.getElementById('roster-title'); 
+        const appTitle = document.getElementById('app-title');
+
+        function getTodayDateString() {
+            return new Date().toLocaleDateString('en-CA'); 
+        }
+
+        function getYesterdayDateString(dateString) {
+            const today = new Date(dateString + "T00:00:00"); 
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            return yesterday.toLocaleDateString('en-CA'); 
+        }
+
+        function formatStatus(statusArray, userId) {
+            if (!statusArray || statusArray.length === 0) {
+                return '<span class="text-xs font-medium text-gray-500">N/A</span>';
+            }
+            return statusArray.map(status => {
+                if (isStaffLoggedIn) {
+                    if (status === 'Lunch') {
+                        return `<button onclick="window.serveStatus('${userId}', 'Lunch')" class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-200 transition-all">Serve Lunch</button>`;
+                    }
+                    if (status === 'Dinner') {
+                        return `<button onclick="window.serveStatus('${userId}', 'Dinner')" class="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800 shadow-sm hover:bg-purple-200 transition-all">Serve Dinner</button>`;
+                    }
+                }
+                
+                if (status === 'Lunch') {
+                    return '<span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 shadow-sm">Lunch</span>';
+                }
+                if (status === 'Dinner') {
+                    return '<span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800 shadow-sm">Dinner</span>';
+                }
+
+                if (status === 'Served-Lunch') {
+                    return '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Lunch</span>';
+                }
+                if (status === 'Served-Dinner') {
+                    return '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Dinner</span>';
+                }
+                return '';
+            }).join(' ');
+        }
+        
+        window.serveStatus = async (userId, statusToServe) => {
+            console.log(`Staff serving ${statusToServe} to ${userId} for ${selectedDate}`);
+            if (!isStaffLoggedIn || !userId || !statusToServe) return;
+
+            try {
+                const statusDocRef = doc(db, statusCollectionPath, selectedDate);
+                const docSnap = await getDoc(statusDocRef);
+                
+                let currentStatuses = {};
+                if (docSnap.exists()) {
+                    currentStatuses = docSnap.data().statuses || {};
+                }
+                
+                let userStatusArray = currentStatuses[userId] || [];
+                
+                const statusIndex = userStatusArray.indexOf(statusToServe);
+                if (statusIndex > -1) {
+                    userStatusArray[statusIndex] = `Served-${statusToServe}`; 
+                }
+
+                await setDoc(statusDocRef, { 
+                    statuses: { [userId]: userStatusArray }
+                }, { merge: true });
+
+                const user = allUsersData.users.find(u => u.id === userId);
+                const userName = user ? user.name : 'Unknown';
+
+                await addDoc(collection(db, auditLogCollectionPath), {
+                    userId: "STAFF",
+                    userName: "Staff",
+                    updatedForDate: selectedDate,
+                    newStatus: userStatusArray,
+                    timestamp: new Date(),
+                    note: `Staff served ${statusToServe} to ${userName}`
+                });
+
+                console.log("Serve status updated successfully.");
+
+            } catch (error) {
+                console.error("Error serving status: ", error);
+            }
+        }
+        
+        function getFilteredUsers() {
+            const filteredUsers = allUsersData.users.filter(u => u.gender === currentViewGender);
+            
+            const filteredGrouped = {};
+            filteredUsers.forEach(user => {
+                if (!filteredGrouped[user.batch]) {
+                    filteredGrouped[user.batch] = [];
+                }
+                filteredGrouped[user.batch].push(user);
+            });
+            
+            return { filteredUsers, filteredGrouped };
+        }
+        
+        function calculateAndDisplayDailyTotals() {
+            let lunchTotal = 0;
+            let dinnerTotal = 0;
+            
+            const { filteredUsers } = getFilteredUsers(); 
+            const filteredUserIds = filteredUsers.map(u => u.id); 
+            
+            const statuses = Object.entries(currentStatusData); 
+            
+            statuses.forEach(([userId, userStatusArray]) => {
+                if (filteredUserIds.includes(userId)) {
+                    if (userStatusArray.includes('Lunch') || userStatusArray.includes('Served-Lunch')) lunchTotal++;
+                    if (userStatusArray.includes('Dinner') || userStatusArray.includes('Served-Dinner')) dinnerTotal++;
+                }
+            });
+            
+            totalLunchCountEl.textContent = lunchTotal;
+            totalDinnerCountEl.textContent = dinnerTotal;
+        }
+        
+        async function calculateAndDisplayMonthlyTotals(dateString) {
+            if (isCalculatingTotals) return; 
+            isCalculatingTotals = true;
+            console.log("Calculating monthly totals for:", dateString.substring(0, 7));
+
+            const [year, month] = dateString.split('-');
+            const daysInMonth = new Date(year, month, 0).getDate();
+            
+            const dateStrings = [];
+            for (let i = 1; i <= daysInMonth; i++) {
+                const day = String(i).padStart(2, '0');
+                dateStrings.push(`${year}-${month}-${day}`);
+            }
+
+            const promises = dateStrings.map(date => getDoc(doc(db, statusCollectionPath, date)));
+            
+            let userMonthlyTotals = {}; 
+
+            try {
+                const docSnaps = await Promise.all(promises);
+
+                docSnaps.forEach(docSnap => {
+                    if (docSnap.exists()) {
+                        const statuses = docSnap.data().statuses || {}; 
+                        
+                        for (const [userId, statusArray] of Object.entries(statuses)) {
+                            if (!userMonthlyTotals[userId]) {
+                                userMonthlyTotals[userId] = { Lunch: 0, Dinner: 0 };
+                            }
+                            if (statusArray.includes('Lunch') || statusArray.includes('Served-Lunch')) {
+                                userMonthlyTotals[userId].Lunch++;
+                            }
+                            if (statusArray.includes('Dinner') || statusArray.includes('Served-Dinner')) {
+                                userMonthlyTotals[userId].Dinner++;
+                            }
+                        }
+                    }
+                });
+
+                currentMonthlyTotals = userMonthlyTotals; 
+                console.log("Monthly totals calculation complete.");
+                
+            } catch (error)
+            {
+                console.error("Error calculating monthly totals: ", error);
+            } finally {
+                isCalculatingTotals = false;
+                renderBatchCards();
+            }
+        }
+
+        function renderBatchCards() {
+            if (!allUsersData.users.length) { 
+                if (!isAdminLoggedIn) return;
+            }
+            
+            rosterDisplayArea.innerHTML = ''; 
+            
+            const { filteredGrouped } = getFilteredUsers(); 
+
+            if (Object.keys(filteredGrouped).length === 0) {
+                 rosterDisplayArea.innerHTML = `<p class="text-center text-gray-500 col-span-full">Kono user ekhono add kora hoyni (ei gender-e).</p>`;
+                 return;
+            }
+
+            BATCHES.forEach(batch => {
+                const usersInBatch = filteredGrouped[batch] || []; 
+                
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden';
+                
+                let userRows = '';
+                if (usersInBatch.length > 0) {
+                    usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    usersInBatch.forEach(user => {
+                        const userStatus = currentStatusData[user.id] || [];
+                        const userTotals = currentMonthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
+                        const isCurrentUser = user.id === currentUserDocId;
+
+                        let depositCell = `<td class="px-4 py-3.5 text-sm text-gray-700 font-medium">TK ${user.deposit || 0}</td>`;
+                        
+                        let monthlyTotalCell = `
+                            <td class="px-4 py-3.5 text-sm text-gray-700">
+                                <div id="totals-${user.id}" class="flex gap-2">
+                                    <span class="text-xs font-semibold text-blue-700">L: ${userTotals.Lunch}</span>
+                                    <span class="text-xs font-semibold text-purple-700">D: ${userTotals.Dinner}</span>
+                                </div>
+                            </td>`;
+
+                        userRows += `
+                            <tr class="${isCurrentUser ? 'bg-indigo-50' : 'hover:bg-gray-50'}">
+                                <td class="px-4 py-3.5 text-sm ${isCurrentUser ? 'text-indigo-800 font-bold' : 'text-gray-900 font-semibold'}">${user.name}</td>
+                                ${depositCell}
+                                ${monthlyTotalCell}
+                                <td class="px-4 py-3.5 text-sm text-gray-700 text-right">
+                                    <div class="flex justify-end items-center gap-2">
+                                        ${formatStatus(userStatus, user.id)}
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    userRows = '<tr><td colspan="4" class="px-5 py-4 text-sm text-gray-500 text-center italic">Ei batch-e kono user nei.</td></tr>';
+                }
+
+                card.innerHTML = `
+                    <div class="bg-gradient-to-r from-indigo-700 to-indigo-500 px-5 py-3">
+                        <h4 class="text-lg font-bold text-white">Batch ${batch}</h4>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Name</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Deposit</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
+                                    <th scope="col" class="px-4 py-2 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Status (Today)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${userRows}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                rosterDisplayArea.appendChild(card);
+            });
+        }
+
+        function populateNameDropdown(batchSelectEl, nameSelectEl, selectedValue) {
+            const selectedBatch = batchSelectEl.value;
+            const { filteredGrouped } = getFilteredUsers(); 
+            
+            nameSelectEl.innerHTML = ''; 
+            nameSelectEl.disabled = true;
+
+            if (!selectedBatch) {
+                nameSelectEl.add(new Option('-- Batch Select Korun --', ''));
+                return;
+            }
+
+            const usersInBatch = filteredGrouped[selectedBatch] || [];
+            
+            usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
+
+            if (usersInBatch.length === 0) {
+                nameSelectEl.add(new Option(`Ei batch-e user nei (${currentViewGender})`, ''));
+                return;
+            }
+
+            nameSelectEl.add(new Option('-- Naam Select Korun --', ''));
+            usersInBatch.forEach(user => {
+                nameSelectEl.add(new Option(user.name, user.id));
+            });
+            
+            nameSelectEl.disabled = false;
+            
+            if (selectedValue) {
+                nameSelectEl.value = selectedValue;
+            }
+        }
+        
+        function updateAllNameDropdowns() {
+            const selectedUserBatch = userLoginBatch.value;
+            const selectedUserName = userLoginName.value;
+            const selectedAdminBatch = adminDepositBatch.value;
+            const selectedAdminName = adminDepositName.value;
+            
+            userLoginName.innerHTML = '<option value="">-- Batch Select Korun --</option>';
+            userLoginName.disabled = true;
+            adminDepositName.innerHTML = '<option value="">-- Batch Select Korun --</option>';
+            adminDepositName.disabled = true;
+            
+            if (selectedUserBatch) {
+                populateNameDropdown(userLoginBatch, userLoginName, selectedUserName);
+            }
+            if (selectedAdminBatch) {
+                populateNameDropdown(adminDepositBatch, adminDepositName, selectedAdminName);
+            }
+        }
+        
+        function updateDashboardView() {
+            if (!db) return; 
+            
+            if (!allUsersData.users.length && !isAdminLoggedIn) { 
+                 console.log("Waiting for user data...");
+                 calculateAndDisplayDailyTotals();
+                 return;
+            }
+            
+            console.log("Updating dashboard view...");
+            
+            const { filteredUsers } = getFilteredUsers();
+            
+            rosterTitle.textContent = `Real-time Roster (${currentViewGender}s)`;
+            updateAllNameDropdowns();
+            calculateAndDisplayDailyTotals(); 
+            renderBatchCards(); 
+            
+            calculateAndDisplayMonthlyTotals(selectedDate); 
+            runDailyCarryOver(filteredUsers); 
+            
+            if (currentViewGender === 'Boy') {
+                boysViewBtn.classList.replace('bg-white', 'bg-indigo-600');
+                boysViewBtn.classList.replace('text-indigo-700', 'text-white');
+                girlsViewBtn.classList.replace('bg-indigo-600', 'bg-white');
+                girlsViewBtn.classList.replace('text-white', 'text-indigo-700');
+            } else {
+                girlsViewBtn.classList.replace('bg-white', 'bg-indigo-600');
+                girlsViewBtn.classList.replace('text-indigo-700', 'text-white');
+                boysViewBtn.classList.replace('bg-indigo-600', 'bg-white');
+                boysViewBtn.classList.replace('text-white', 'text-indigo-700');
+            }
+        }
+        
+        function setupUserListener() {
+            if (userListenerUnsubscribe) userListenerUnsubscribe(); 
+            
+            const q = query(collection(db, usersCollectionPath)); 
+
+            userListenerUnsubscribe = onSnapshot(q, (snapshot) => {
+                console.log("User data snapshot received.");
+                loadingSpinner.classList.add('hidden');
+                appContent.classList.remove('opacity-0');
+
+                const users = [];
+                snapshot.forEach((doc) => {
+                    users.push({ id: doc.id, ...doc.data() });
+                });
+
+                const groupedUsers = {};
+                users.forEach(user => {
+                    if (!groupedUsers[user.batch]) {
+                        groupedUsers[user.batch] = [];
+                    }
+                    groupedUsers[user.batch].push(user);
+                });
+                
+                allUsersData = { users, grouped: groupedUsers };
+                
+                updateDashboardView(); 
+
+            }, (error) => {
+                console.error("Error fetching roster users: ", error);
+                rosterDisplayArea.innerHTML = `<p class="text-center text-red-600 col-span-full">User list load korte error hocche.</p>`;
+                loadingSpinner.classList.add('hidden');
+                appContent.classList.remove('opacity-0'); 
+            });
+        }
+        
+        function setupStatusListener(dateString) {
+            if (statusListenerUnsubscribe) statusListenerUnsubscribe(); 
+
+            const statusDocRef = doc(db, statusCollectionPath, dateString);
+
+            statusListenerUnsubscribe = onSnapshot(statusDocRef, (docSnap) => {
+                console.log(`Status data snapshot received for ${dateString}.`);
+                if (docSnap.exists()) {
+                    currentStatusData = docSnap.data().statuses || {};
+                } else {
+                    currentStatusData = {};
+                }
+                
+                updateDashboardView(); 
+                
+                if (currentUserDocId) {
+                    updateCheckboxesForCurrentUser();
+                }
+
+            }, (error) => {
+                console.error(`Error fetching status for ${dateString}: `, error);
+                rosterDisplayArea.innerHTML = `<p class="text-center text-red-600 col-span-full">Status load korte error hocche.</p>`;
+            });
+        }
+        
+        function updateCheckboxesForCurrentUser() {
+            if (!currentUserDocId) return;
+            const userStatus = currentStatusData[currentUserDocId] || [];
+            
+            const hasServedLunch = userStatus.includes('Served-Lunch');
+            statusLunchCheckbox.checked = userStatus.includes('Lunch') || hasServedLunch;
+            statusLunchCheckbox.disabled = hasServedLunch;
+
+            const hasServedDinner = userStatus.includes('Served-Dinner');
+            statusDinnerCheckbox.checked = userStatus.includes('Dinner') || hasServedDinner;
+            statusDinnerCheckbox.disabled = hasServedDinner;
+        }
+
+        async function runDailyCarryOver(filteredUsers) {
+            if (isCarryingOver || !filteredUsers.length) return;
+            isCarryingOver = true;
+            
+            console.log("Running daily carry-over check...");
+
+            const usersMissingStatus = filteredUsers.filter(u => !currentStatusData[u.id]);
+            
+            if (usersMissingStatus.length === 0) {
+                console.log("All visible users have status. No carry-over needed.");
+                isCarryingOver = false;
+                return;
+            }
+            
+            console.log(`${usersMissingStatus.length} users missing status. Fetching yesterday's data...`);
+
+            try {
+                const yesterdayDateString = getYesterdayDateString(selectedDate);
+                const yesterdayStatusDocRef = doc(db, statusCollectionPath, yesterdayDateString);
+                const docSnap = await getDoc(yesterdayStatusDocRef);
+
+                let yesterdayStatuses = {};
+                if (docSnap.exists()) {
+                    yesterdayStatuses = docSnap.data().statuses || {};
+                } else {
+                    console.log("Yesterday's status doc does not exist. Cannot carry over.");
+                    isCarryingOver = false;
+                    return;
+                }
+                
+                const updatesToMerge = {};
+                const auditLogPromises = [];
+                
+                usersMissingStatus.forEach(user => {
+                    const yesterdayUserStatus = yesterdayStatuses[user.id] || [];
+                    
+                    const carriedOverStatus = yesterdayUserStatus.map(s => {
+                        if (s === 'Served-Lunch') return 'Lunch';
+                        if (s === 'Served-Dinner') return 'Dinner';
+                        return s;
+                    }).filter(s => s === 'Lunch' || s === 'Dinner'); 
+
+                    if (carriedOverStatus.length > 0) {
+                        updatesToMerge[user.id] = carriedOverStatus;
+                        
+                        auditLogPromises.push(addDoc(collection(db, auditLogCollectionPath), {
+                            userId: user.id,
+                            userName: user.name,
+                            updatedForDate: selectedDate,
+                            newStatus: carriedOverStatus,
+                            timestamp: new Date(),
+                            note: "Automatic carry-over from yesterday"
+                        }));
+                    }
+                });
+
+                if (Object.keys(updatesToMerge).length > 0) {
+                    console.log("Applying carry-over for users:", Object.keys(updatesToMerge));
+                    
+                    const todayStatusDocRef = doc(db, statusCollectionPath, selectedDate);
+                    await setDoc(todayStatusDocRef, {
+                        statuses: updatesToMerge
+                    }, { merge: true });
+                    
+                    await Promise.all(auditLogPromises);
+                    
+                } else {
+                    console.log("No users had any status yesterday to carry over.");
+                }
+
+            } catch (error) {
+                console.error("Error during status carry-over: ", error);
+            } finally {
+                isCarryingOver = false;
+            }
+        }
+
+        function handleDateChange(e) {
+            selectedDate = e.target.value;
+            console.log("Date changed to:", selectedDate);
+            
+            currentStatusData = {}; 
+            currentMonthlyTotals = {}; 
+            
+            if (statusListenerUnsubscribe) statusListenerUnsubscribe();
+
+            setupStatusListener(selectedDate);
+            
+            updateDashboardView(); 
+        }
+
+        function handleGenderChange(newGender) {
+            if (currentViewGender === newGender) return; 
+            
+            console.log("Gender changed to:", newGender);
+            currentViewGender = newGender;
+            
+            userLoginBatch.value = '';
+            userLoginName.value = '';
+            userLoginName.disabled = true;
+            currentUserDocId = null;
+            isLoggedIn = false;
+            updateSection.classList.add('hidden');
+            
+            updateDashboardView();
+        }
+
+        function handleAuth() {
+            try {
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        console.log("User is signed in:", user.uid);
+                        userId = user.uid; 
+                        authStatus.textContent = `Connected`;
+                        authStatus.classList.remove('bg-red-200', 'text-red-800');
+                        authStatus.classList.add('bg-green-200', 'text-green-800');
+                        
+                        setupUserListener();
+                        setupStatusListener(selectedDate);
+
+                    } else {
+                        console.log("User is signed out. Signing in anonymously...");
+                        authStatus.textContent = "Connecting...";
+                        authStatus.classList.remove('bg-green-200', 'text-green-800');
+                        authStatus.classList.add('bg-red-200', 'text-red-800');
+                        
+                        try {
+                            await signInAnonymously(auth);
+                        } catch (authError) {
+                            console.error("Anonymous Authentication Error:", authError);
+                            authStatus.textContent = "Authentication Failed";
+                            loadingSpinner.classList.add('hidden'); 
+                            appContent.classList.remove('opacity-0'); 
+
+                            if (authError.code === 'auth/configuration-not-found') {
+                                const errorHtml = `
+                                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg max-w-3xl mx-auto mt-10" role="alert">
+                                  <strong class="font-bold">Firebase Error (auth/configuration-not-found)</strong>
+                                  <span class="block sm:inline">Authentication failed. Ei error-er mane hocche, 'Anonymous' sign-in method-ti apnar Firebase project-e enable kora hoyni.</span>
+                                  <p class="font-bold mt-4">Kivabe Thik Korben:</p>
+                                  <ol class="list-decimal list-inside">
+                                      <li>Apnar Firebase Project-e ('new-meal-28d9e') jaan.</li>
+                                      <li><b>Build</b> -> <b>Authentication</b>-e click korun.</li>
+                                      <li><b>Sign-in method</b> tab-e click korun.</li>
+                                      <li>List theke <b>Anonymous</b>-e click korun.</li>
+                                      <li>Switch-ti <b>Enable</b> korun ebong <b>Save</b> korun.</li>
+                                  </ol>
+                                  <p class="mt-2">Page-ti reload korun ei change korar por.</p>
+                                </div>`;
+                                appContent.insertAdjacentHTML('afterbegin', errorHtml);
+                            }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Auth setup error:", e);
+                authStatus.textContent = "Auth Error";
+            }
+        }
+        
+        datePicker.addEventListener('change', handleDateChange);
+        boysViewBtn.addEventListener('click', () => handleGenderChange('Boy'));
+        girlsViewBtn.addEventListener('click', () => handleGenderChange('Girl'));
+        
+        adminLoginBtn.addEventListener('click', () => adminModal.classList.remove('hidden'));
+        closeModalBtn.addEventListener('click', () => {
+            adminModal.classList.add('hidden');
+            adminLoginError.classList.add('hidden');
+        });
+
+        adminLoginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = e.target.adminId.value;
+            const pass = e.target.adminPass.value;
+
+            if (id === 'admin' && pass === 'admin123') {
+                isAdminLoggedIn = true;
+                adminSection.classList.remove('hidden');
+                adminModal.classList.add('hidden');
+                adminLoginError.classList.add('hidden');
+                adminLoginForm.reset();
+            } else {
+                adminLoginError.classList.remove('hidden');
+            }
+        });
+
+        adminLogoutBtn.addEventListener('click', () => {
+            isAdminLoggedIn = false;
+            adminSection.classList.add('hidden');
+        });
+        
+        staffLoginBtn.addEventListener('click', () => staffModal.classList.remove('hidden'));
+        
+        closeStaffModalBtn.addEventListener('click', () => {
+            staffModal.classList.add('hidden');
+            staffLoginError.classList.add('hidden');
+        });
+
+        staffLoginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = e.target.staffId.value;
+            const pass = e.target.staffPass.value;
+
+            if (id === 'staff' && pass === 'staff123') {
+                isStaffLoggedIn = true;
+                staffModal.classList.add('hidden');
+                staffLoginError.classList.add('hidden');
+                staffLoginForm.reset();
+                
+                adminLoginBtn.classList.add('hidden');
+                staffLoginBtn.classList.add('hidden');
+                staffLogoutBtn.classList.remove('hidden');
+                mainControls.classList.add('hidden');
+                genderToggleSection.classList.add('md:col-span-3'); 
+                mainRoster.classList.remove('md:col-span-2');
+                mainRoster.classList.add('md:col-span-3');
+                
+                renderBatchCards(); 
+                
+            } else {
+                staffLoginError.classList.remove('hidden');
+            }
+        });
+
+        staffLogoutBtn.addEventListener('click', () => {
+            isStaffLoggedIn = false;
+            
+            adminLoginBtn.classList.remove('hidden');
+            staffLoginBtn.classList.remove('hidden');
+            staffLogoutBtn.add('hidden');
+            mainControls.classList.remove('hidden');
+            genderToggleSection.classList.remove('md:col-span-3');
+            mainRoster.classList.remove('md:col-span-3');
+            mainRoster.classList.add('md:col-span-2');
+            
+            renderBatchCards(); 
+        });
+
+        addUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isAdminLoggedIn) return; 
+            
+            const name = newUserNameInput.value.trim();
+            const batch = newUserBatchSelect.value;
+            const deposit = Number(newUserDepositInput.value) || 0;
+            const gender = document.querySelector('input[name="new-user-gender"]:checked').value; 
+
+            if (name && batch && gender && userId) { 
+                try {
+                    await addDoc(collection(db, usersCollectionPath), {
+                        name: name,
+                        batch: batch,
+                        deposit: deposit,
+                        gender: gender 
+                    });
+                    
+                    addUserMessage.textContent = 'User successsfully add kora hoyeche!';
+                    addUserMessage.className = 'text-sm text-green-600 mt-2';
+                    addUserMessage.classList.remove('hidden');
+                    addUserForm.reset();
+                    
+                } catch (error) {
+                    console.error("Error adding user: ", error);
+                    addUserMessage.textContent = 'Error: User add kora jayni.';
+                    addUserMessage.className = 'text-sm text-red-600 mt-2';
+                    addUserMessage.classList.remove('hidden');
+                }
+                setTimeout(() => addUserMessage.classList.add('hidden'), 3000);
+            }
+        });
+        
+        adminDepositBatch.addEventListener('change', (e) => {
+            populateNameDropdown(adminDepositBatch, adminDepositName);
+            adminDepositName.value = ''; 
+            adminDepositAmount.value = 0; 
+        });
+        
+        adminDepositName.addEventListener('change', (e) => {
+            const selectedUserId = e.target.value;
+            const selectedBatch = adminDepositBatch.value;
+            
+            if (selectedUserId && selectedBatch) {
+                const user = allUsersData.grouped[selectedBatch]?.find(u => u.id === selectedUserId);
+                if (user) {
+                    adminDepositAmount.value = user.deposit || 0;
+                }
+            } else {
+                adminDepositAmount.value = 0;
+            }
+        });
+
+        adminDepositForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isAdminLoggedIn) return;
+
+            const userIdToUpdate = adminDepositName.value; 
+            const newDeposit = Number(adminDepositAmount.value);
+
+            if (!userIdToUpdate) {
+                adminDepositMessage.textContent = 'Please ekjon user select korun.';
+                adminDepositMessage.className = 'text-sm text-red-600 mt-2';
+                adminDepositMessage.classList.remove('hidden');
+                setTimeout(() => adminDepositMessage.classList.add('hidden'), 3000);
+                return;
+            }
+
+            try {
+                const userDocRef = doc(db, usersCollectionPath, userIdToUpdate);
+                await updateDoc(userDocRef, {
+                    deposit: newDeposit
+                });
+                
+                adminDepositMessage.textContent = 'Deposit successsfully update hoyeche!';
+                adminDepositMessage.className = 'text-sm text-green-600 mt-2';
+                adminDepositMessage.classList.remove('hidden');
+                
+                adminDepositForm.reset();
+                adminDepositName.innerHTML = '<option value="">-- Batch Select Korun --</option>';
+                adminDepositName.disabled = true;
+
+            } catch (error) {
+                console.error("Error updating deposit: ", error);
+                adminDepositMessage.textContent = 'Error: Deposit update hoyni.';
+                adminDepositMessage.className = 'text-sm text-red-600 mt-2';
+                adminDepositMessage.classList.remove('hidden');
+            }
+            setTimeout(() => adminDepositMessage.classList.add('hidden'), 3000);
+        });
+
+        userLoginBatch.addEventListener('change', (e) => {
+            populateNameDropdown(userLoginBatch, userLoginName);
+            
+            userLoginName.value = '';
+            isLoggedIn = false;
+            currentUserDocId = null;
+            updateSection.classList.add('hidden');
+            saveMessage.classList.add('hidden');
+            renderBatchCards(); 
+        });
+
+        userLoginName.addEventListener('change', async (e) => { 
+            const docId = e.target.value;
+
+            if (docId) {
+                isLoggedIn = true;
+                currentUserDocId = docId;
+                
+                updateCheckboxesForCurrentUser();
+                
+                updateSection.classList.remove('hidden');
+                saveMessage.classList.add('hidden');
+                renderBatchCards(); 
+                
+            } else {
+                isLoggedIn = false;
+                currentUserDocId = null;
+                updateSection.classList.add('hidden');
+                saveMessage.classList.add('hidden');
+                renderBatchCards(); 
+            }
+        });
+
+        saveStatusBtn.addEventListener('click', async () => {
+            if (!isLoggedIn || !currentUserDocId || !userId) return;
+
+            const newStatus = [];
+            const oldStatus = currentStatusData[currentUserDocId] || [];
+
+            if (statusLunchCheckbox.disabled) {
+                if(oldStatus.includes('Served-Lunch')) newStatus.push('Served-Lunch');
+            } else if (statusLunchCheckbox.checked) {
+                newStatus.push('Lunch');
+            }
+            
+            if (statusDinnerCheckbox.disabled) {
+                if(oldStatus.includes('Served-Dinner')) newStatus.push('Served-Dinner');
+            } else if (statusDinnerCheckbox.checked) {
+                newStatus.push('Dinner');
+            }
+
+            try {
+                const statusDocRef = doc(db, statusCollectionPath, selectedDate);
+                await setDoc(statusDocRef, { 
+                    statuses: { [currentUserDocId]: newStatus }
+                }, { merge: true });
+                
+                const user = allUsersData.users.find(u => u.id === currentUserDocId);
+                const userName = user ? user.name : 'Unknown';
+
+                await addDoc(collection(db, auditLogCollectionPath), {
+                    userId: currentUserDocId,
+                    userName: userName,
+                    updatedForDate: selectedDate,
+                    newStatus: newStatus,
+                    timestamp: new Date(),
+                    note: "Manual user update"
+                });
+                
+                saveMessage.textContent = 'Status successsfully update hoyeche!';
+                saveMessage.className = 'text-sm text-green-600 mt-2';
+                saveMessage.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error updating status: ", error);
+                saveMessage.textContent = 'Error: Status update hoyni.';
+                saveMessage.className = 'text-sm text-red-600 mt-2';
+                saveMessage.classList.remove('hidden');
+            }
+            setTimeout(() => saveMessage.classList.add('hidden'), 3000);
+        });
+        
+        downloadRosterBtn.addEventListener('click', async () => {
+            if (!db || !userId) { return; }
+
+            downloadRosterBtn.textContent = "Generating...";
+            downloadRosterBtn.disabled = true;
+
+            let csvContent = "Batch,Name,Deposit,Status (Selected Date),Monthly Lunch,Monthly Dinner\n";
+            try {
+                const { filteredUsers } = getFilteredUsers(); 
+                const users = filteredUsers; 
+                const dateStatuses = currentStatusData;
+                
+                if (Object.keys(currentMonthlyTotals).length === 0) {
+                    await calculateAndDisplayMonthlyTotals(selectedDate);
+                }
+                const monthlyTotals = currentMonthlyTotals;
+
+                users.sort((a, b) => {
+                   if (a.batch === b.batch) return a.name.localeCompare(b.name);
+                   return a.batch.localeCompare(b.batch);
+                });
+
+                users.forEach(user => {
+                    const userStatus = dateStatuses[user.id] || [];
+                    const statusText = userStatus.join(' & ') || 'N/A';
+                    const totals = monthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
+                    
+                    csvContent += `${user.batch},${user.name},${user.deposit || 0},"${statusText}",${totals.Lunch},${totals.Dinner}\n`;
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                if (link.download !== undefined) {
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", `smc_meal_roster_${currentViewGender.toLowerCase()}_${selectedDate.substring(0, 7)}.csv`);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            } catch (error) {
+                console.error("Error generating CSV: ", error);
+            } finally {
+                downloadRosterBtn.textContent = "Download Korte Click Korun";
+                downloadRosterBtn.disabled = false;
+            }
+        });
+
+        if(db) {
+            datePicker.value = selectedDate; 
+            handleAuth();
+        }
+
+    </script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #admin-login-modal, #staff-login-modal {
+            background-color: rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s ease;
+        }
+        .spinner {
+            border-top-color: #4f46e5;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .roster-grid-container::-webkit-scrollbar {
+            display: none;
+        }
+        .roster-grid-container {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+    <div id="loading-spinner" class="fixed inset-0 flex items-center justify-center bg-white z-50">
+        <div class="spinner w-12 h-12 border-4 border-gray-200 rounded-full"></div>
+    </div>
+
+    <div id="admin-login-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm" @click.stop>
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">Admin Login</h3>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600 text-3xl font-bold">&times;</button>
+            </div>
+            <form id="admin-login-form" class="space-y-4">
+                <div>
+                    <label for="adminId" class="block text-sm font-medium text-gray-700">Admin ID</label>
+                    <input type="text" id="adminId" value="admin" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="adminPass" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="adminPass" value="admin123" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <p id="admin-login-error" class="text-sm text-red-600 hidden">Invalid ID or Password.</p>
+                <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Login</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="staff-login-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm" @click.stop>
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">Staff Login</h3>
+                <button id="close-staff-modal-btn" class="text-gray-400 hover:text-gray-600 text-3xl font-bold">&times;</button>
+            </div>
+            <form id="staff-login-form" class="space-y-4">
+                <div>
+                    <label for="staffId" class="block text-sm font-medium text-gray-700">Staff ID</label>
+                    <input type="text" id="staffId" value="staff" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="staffPass" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="staffPass" value="staff123" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <p id="staff-login-error" class="text-sm text-red-600 hidden">Invalid ID or Password.</p>
+                <button type="submit" class="w-full bg-teal-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">Login</button>
+            </form>
+        </div>
+    </div>
+
+
+    <div id="app-content" class="opacity-0 transition-opacity duration-500">
+        <header class="bg-white shadow-md border-b border-gray-200">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+                <div class="flex justify-between items-center h-16">
+                    <h1 id="app-title" class="text-2xl font-extrabold text-indigo-700">SMC Meal Dashboard</h1>
+                    <div class="flex items-center gap-4">
+                         <div>
+                            <label for="date-picker" class="text-sm font-medium text-gray-700">Select Date:</label>
+                            <input type="date" id="date-picker" class="ml-2 px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                         </div>
+                         <span id="auth-status" class="text-xs font-mono px-2 py-0.5 rounded-md"></span>
+                        <button id="admin-login-btn" class="bg-gray-800 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-gray-900 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 shadow-md">
+                            Admin Login
+                        </button>
+                        <button id="staff-login-btn" class="bg-teal-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-teal-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-md">
+                            Staff Login
+                        </button>
+                        <button id="staff-logout-btn" class="hidden bg-red-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md">
+                            Staff Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div id="gender-toggle-section" class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl mt-6">
+            <div class="flex items-center p-1 bg-indigo-100 rounded-lg max-w-xs">
+                <button id="boys-view-btn" class="flex-1 w-full px-4 py-2 rounded-md font-semibold text-sm bg-indigo-600 text-white shadow focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
+                    Boys
+                </button>
+                <button id="girls-view-btn" class="flex-1 w-full px-4 py-2 rounded-md font-semibold text-sm bg-white text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
+                    Girls
+                </button>
+            </div>
+        </div>
+
+        <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8 pt-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+                
+                <div id="main-controls" class="md:col-span-1 space-y-6">
+
+                    <div id="admin-section" class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hidden">
+                        <div class="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
+                            <h3 class="text-xl font-bold text-gray-900">Admin Panel</h3>
+                            <button id="admin-logout-btn" class="text-sm text-red-600 hover:text-red-800 font-medium">Logout</button>
+                        </div>
+                        
+                        <div class="border-b border-gray-200 pb-5">
+                            <h4 class="text-md font-semibold text-gray-800 mb-3">Notun User Jog Korun</h4>
+                            <form id="add-user-form" class="space-y-4">
+                                <div>
+                                    <label for="new-user-name" class="block text-sm font-medium text-gray-700">User Name</label>
+                                    <input type="text" id="new-user-name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                </div>
+                                <div>
+                                    <label for="new-user-batch" class="block text-sm font-medium text-gray-700">Batch</label>
+                                    <select id="new-user-batch" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                        <option value="">Batch Select Korun</option>
+                                        <option value="10">10</option>
+                                        <option value="11">11</option>
+                                        <option value="12">12</option>
+                                        <option value="13">13</option>
+                                        <option value="14">14</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Gender</label>
+                                    <fieldset class="mt-2 flex gap-6">
+                                        <div class="flex items-center">
+                                            <input id="gender-boy" name="new-user-gender" type="radio" value="Boy" class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600" checked>
+                                            <label for="gender-boy" class="ml-2 block text-sm font-medium text-gray-900">Boy</label>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <input id="gender-girl" name="new-user-gender" type="radio" value="Girl" class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                            <label for="gender-girl" class="ml-2 block text-sm font-medium text-gray-900">Girl</label>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div>
+                                    <label for="new-user-deposit" class="block text-sm font-medium text-gray-700">Initial Deposit (TK)</label>
+                                    <input type="number" id="new-user-deposit" value="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                </div>
+                                <button type="submit" class="w-full bg-emerald-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                                    User Jog Korun
+                                </button>
+                                <p id="add-user-message" class="text-sm text-green-600 mt-2 hidden"></p>
+                            </form>
+                        </div>
+
+                        <div class="pt-5">
+                            <h4 class="text-md font-semibold text-gray-800 mb-3">User Deposit Update Korun</h4>
+                            <form id="admin-deposit-form" class="space-y-4">
+                                <div>
+                                    <label for="admin-deposit-batch" class="block text-sm font-medium text-gray-700">Step 1: Batch Select Korun</label>
+                                    <select id="admin-deposit-batch" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                        <option value="">-- Batch Select --</option>
+                                        <option value="10">10</option>
+                                        <option value="11">11</option>
+                                        <option value="12">12</option>
+                                        <option value="13">13</option>
+                                        <option value="14">14</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="admin-deposit-name" class="block text-sm font-medium text-gray-700">Step 2: User Select Korun</label>
+                                    <select id="admin-deposit-name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100" disabled>
+                                        <option value="">-- Batch Select Korun --</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="admin-deposit-amount" class="block text-sm font-medium text-gray-700">Notun Deposit Amount (TK)</label>
+                                    <input type="number" id="admin-deposit-amount" value="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                </div>
+                                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                    Deposit Update Korun
+                                </button>
+                                <p id="admin-deposit-message" class="text-sm text-green-600 mt-2 hidden"></p>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 sticky top-8">
+                        <h3 class="text-xl font-bold mb-4 border-b border-gray-200 pb-3 text-gray-900">User Login & Update</h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label for="user-login-batch" class="block text-sm font-medium text-gray-700">Step 1: Batch Select Korun</label>
+                                <select id="user-login-batch" class="mt-1 block w-full px-3 py-2.5 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                    <option value="">-- Batch Select --</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                </select>
+                            </div>
+    
+                            <div>
+                                <label for="user-login-name" class="block text-sm font-medium text-gray-700">Step 2: Apnar Naam Select Korun</label>
+                                <select id="user-login-name" class="mt-1 block w-full px-3 py-2.5 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100" disabled>
+                                    <option value="">-- Batch Select Korun --</option>
+                                </select>
+                            </div>
+                        </div>
+
+
+                        <div id="update-section" class="mt-6 hidden">
+                            <h4 class="block text-sm font-medium text-gray-700 mb-3">Step 3: Apnar Status Update Korun</h4>
+                            <fieldset class="space-y-3">
+                                <div class="relative flex items-start">
+                                    <div class="flex h-6 items-center">
+                                        <input id="status-lunch" name="status-lunch" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50">
+                                    </div>
+                                    <div class="ml-3 text-sm leading-6">
+                                        <label for="status-lunch" class="font-medium text-gray-900">Lunch</label>
+                                    </div>
+                                </div>
+                                <div class="relative flex items-start">
+                                    <div class="flex h-6 items-center">
+                                        <input id="status-dinner" name="status-dinner" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50">
+                                    </div>
+                                    <div class="ml-3 text-sm leading-6">
+                                        <label for="status-dinner" class="font-medium text-gray-900">Dinner</label>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <button id="save-status-btn" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mt-5">
+                                Update Save Korun
+                            </button>
+                            <p id="save-message" class="text-sm text-green-600 mt-2 hidden"></p>
+                        </div>
+                    </div>
+
+                </div>
+                
+                <div id="main-roster" class="md:col-span-2 space-y-6">
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-5 flex items-center justify-between">
+                            <h4 class="text-lg font-semibold text-blue-800">Total Lunch (Selected Date)</h4>
+                            <p id="total-lunch-count" class="text-3xl font-extrabold text-blue-600">0</p>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-5 flex items-center justify-between">
+                            <h4 class="text-lg font-semibold text-purple-800">Total Dinner (Selected Date)</h4>
+                            <p id="total-dinner-count" class="text-3xl font-extrabold text-purple-600">0</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap justify-between items-center gap-4 border-b border-gray-300 pb-4">
+                        <h3 id="roster-title" class="text-2xl font-bold text-gray-900">Real-time Roster (Boys)</h3>
+                        <button id="download-roster-btn" class="bg-indigo-600 text-white py-2 px-5 rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md">
+                            Download Korte Click Korun
+                        </button>
+                    </div>
+
+                    <div id="roster-display-area" class="grid grid-cols-1 lg:grid-cols-2 gap-5 roster-grid-container">
+                        <p class="text-center text-gray-500 col-span-full">Loading users...</p>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+</body>
+</html>
+
