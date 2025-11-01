@@ -4,18 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Chosen Palette: Indigo, Emerald, Rose -->
-    <!-- Application Structure Plan: A single-page dashboard. A 3-column grid layout (1 for controls, 2 for data). The left column (Controls) is sticky and contains Admin, Staff, and User login/controls. This is task-oriented and separates actions from viewing. The right column (Data) shows total counts and the main roster, which is a grid of "Batch Cards". This is a thematic structure. User flow: 1. (Optional) Admin/Staff login to unlock special panels/actions. 2. Select Gender (Boy/Girl) to filter the *entire* view. 3. Select Date to view that day's roster. 4. (User) Login to update personal status. 5. (Staff) Click status badges to mark as 'Served'. This structure was chosen to handle multiple user roles (Admin, Staff, User) and complex data (date-based, gender-based) in one clear, interactive view, prioritizing ease of use for the most common task (viewing the roster). -->
+    <!-- Application Structure Plan: A single-page dashboard. A 3-column grid layout (1 for controls, 2 for data). The left column (Controls) is sticky and contains Admin, Staff, and User login/controls. This is task-oriented and separates actions from viewing. The right column (Data) shows total counts (now 5 items) and the main roster, which is a grid of "Batch Cards". This is a thematic structure. User flow: 1. (Optional) Admin/Staff login. 2. Select Gender (Boy/Girl). 3. Select Date (defaults to TOMORROW). 4. (User) Login to update personal status (now with 5 checkboxes). Users can ONLY update future dates (tomorrow onwards). 5. (Staff) Click L/D badges to mark as 'Served'. Staff can ONLY serve for TODAY's date. This structure is robust and handles complex user roles and date-based permissions. -->
     <!-- Visualization & Content Choices: 
-        - Report Info: Daily Lunch/Dinner Totals -> Goal: Inform (At a glance) -> Viz: HTML "Stat Cards" -> Interaction: Updates on Date/Gender change -> Justification: Quick summary for admin/staff.
-        - Report Info: User List -> Goal: Organize/Inform -> Viz: HTML Tables inside "Batch Cards" (Grid Layout) -> Interaction: Filtered by Gender/Date. Highlights current user. Shows status. -> Justification: Groups users logically by batch, matching the report's structure but making it dynamic.
-        - Report Info: User Status (L/D) -> Goal: Inform/Compare -> Viz: HTML Badges (color-coded) -> Interaction: (Staff) Click to change to 'Served'. (User) Updated via control panel. -> Justification: Clear visual cue for status.
-        - Report Info: User Deposit -> Goal: Inform -> Viz: Text in table -> Interaction: (Admin) Updated via control panel. -> Justification: Simple display for financial info.
-        - Report Info: Monthly Totals -> Goal: Compare (Trends) -> Viz: Text in table (L: X, D: Y) -> Interaction: Recalculates on status update/month change. -> Justification: Provides per-person summary without a complex chart.
-        - Report Info: User Update -> Goal: Input -> Viz: HTML Form (Dropdowns, Checkboxes) -> Interaction: Dynamically populated dropdowns (Batch -> Name). -> Justification: Logical flow for user input.
-        - Report Info: Admin/Staff Actions -> Goal: Input/Task -> Viz: Modal Login, Hidden Panels -> Interaction: Login unlocks panels (Add User, Update Deposit) or new UI (Serve buttons). -> Justification: Securely hides sensitive actions from regular users.
+        - Report Info: Daily Totals (L, D, Mutton, Egg-F, Egg-P) -> Goal: Inform -> Viz: HTML "Stat Cards" (now 5 cards, in a 2/3 grid) -> Interaction: Updates on Date/Gender change -> Justification: Quick summary for admin/staff.
+        - Report Info: User List -> Goal: Organize/Inform -> Viz: HTML Tables inside "Batch Cards" -> Interaction: Filtered by Gender/Date. Highlights current user. Shows status. -> Justification: Groups users logically.
+        - Report Info: User Status (L/D + Additional Items) -> Goal: Inform/Compare -> Viz: HTML Badges (color-coded). L/D badges are interactive for Staff. -> Interaction: (Staff) Click L/D *only on today's date*. (User) Updated via control panel *only for future dates*. -> Justification: Clear visual cue for all statuses.
+        - Report Info: User Deposit -> Goal: Inform -> Viz: Text in table -> Interaction: (Admin) Updated via control panel. -> Justification: Simple display.
+        - Report Info: Monthly Totals (L/D only) -> Goal: Compare (Trends) -> Viz: Text in table (L: X, D: Y) -> Interaction: Recalculates on date/status change. -> Justification: Provides per-person summary.
+        - Report Info: User Update -> Goal: Input -> Viz: HTML Form (Dropdowns, 5 Checkboxes) -> Interaction: Dynamically populated. *Locked for today/past dates*. -> Justification: Logical flow for new items and date locking.
+        - Report Info: Staff Serve -> Goal: Input -> Viz: Clickable badges in roster -> Interaction: *Enabled only for today's date*. -> Justification: Prevents staff from serving past/future meals.
+        - Report Info: Download -> Goal: Export/Analyze -> Viz: CSV File -> Interaction: Button click. -> Justification: "Pic er moto" request implemented. CSV now has batch-wise sections with headers, plus a final summary total section.
     -->
     <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
-    <title>SMC Meal</title>
+    <title>SMC Meal Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,6 +43,7 @@
             getDoc 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // User's Firebase Config
         const firebaseConfig = {
           apiKey: "AIzaSyApOnhZJ8HkpQhKSiPK2AvdRtSP5ddDcrI",
           authDomain: "new-meal-28d9e.firebaseapp.com",
@@ -53,6 +55,7 @@
         };
         
         let db, auth, userId;
+        // Shared database paths
         const usersCollectionPath = "roster-users";
         const statusCollectionPath = "roster-status-by-date";
         const auditLogCollectionPath = "roster-audit-log";
@@ -74,6 +77,7 @@
             document.getElementById('loading-spinner').classList.add('hidden');
         }
         
+        // State variables
         let currentUserDocId = null;
         let isLoggedIn = false;
         let isAdminLoggedIn = false;
@@ -81,7 +85,19 @@
         const BATCHES = ["10", "11", "12", "13", "14"];
         let currentViewGender = 'Boy'; 
 
-        let selectedDate = getTodayDateString();
+        function getTodayDateString() {
+            return new Date().toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
+        }
+
+        function getTomorrowDateString() {
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1); // Tarikh 1 din barano holo
+            return tomorrow.toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
+        }
+        
+        let selectedDate = getTomorrowDateString();
+        let todayDate = getTodayDateString();
         
         let allUsersData = { users: [], grouped: {} }; 
         let currentStatusData = {}; 
@@ -93,6 +109,7 @@
         let isCalculatingTotals = false; 
         let isCarryingOver = false; 
 
+        // DOM Elements
         const loadingSpinner = document.getElementById('loading-spinner');
         const appContent = document.getElementById('app-content');
         const authStatus = document.getElementById('auth-status');
@@ -104,6 +121,9 @@
         
         const totalLunchCountEl = document.getElementById('total-lunch-count');
         const totalDinnerCountEl = document.getElementById('total-dinner-count');
+        const totalMuttonCountEl = document.getElementById('total-mutton-count');
+        const totalEggFishCountEl = document.getElementById('total-egg-fish-count');
+        const totalEggPoultryCountEl = document.getElementById('total-egg-poultry-count');
         
         const boysViewBtn = document.getElementById('boys-view-btn');
         const girlsViewBtn = document.getElementById('girls-view-btn');
@@ -139,8 +159,12 @@
         const userLoginBatch = document.getElementById('user-login-batch'); 
         const userLoginName = document.getElementById('user-login-name');   
         const updateSection = document.getElementById('update-section');
+        const dateLockMessage = document.getElementById('date-lock-message');
         const statusLunchCheckbox = document.getElementById('status-lunch');
         const statusDinnerCheckbox = document.getElementById('status-dinner');
+        const statusMuttonCheckbox = document.getElementById('status-mutton');
+        const statusEggFishCheckbox = document.getElementById('status-egg-fish');
+        const statusEggPoultryCheckbox = document.getElementById('status-egg-poultry');
         const saveStatusBtn = document.getElementById('save-status-btn');
         const saveMessage = document.getElementById('save-message');
         
@@ -149,10 +173,7 @@
         const rosterTitle = document.getElementById('roster-title'); 
         const appTitle = document.getElementById('app-title');
 
-        function getTodayDateString() {
-            return new Date().toLocaleDateString('en-CA'); 
-        }
-
+        // Helper Functions
         function getYesterdayDateString(dateString) {
             const today = new Date(dateString + "T00:00:00"); 
             const yesterday = new Date(today);
@@ -160,40 +181,82 @@
             return yesterday.toLocaleDateString('en-CA'); 
         }
 
-        function formatStatus(statusArray, userId) {
-            if (!statusArray || statusArray.length === 0) {
+        // --- Core Logic Functions ---
+
+        /**
+         * Renders the status badges for a user in the roster.
+         * Contains logic for Staff (clickable buttons for today) vs. User (static badges).
+         */
+        function formatStatus(statusObject, userId) {
+            if (!statusObject || Object.keys(statusObject).length === 0) {
                 return '<span class="text-xs font-medium text-gray-500">N/A</span>';
             }
-            return statusArray.map(status => {
-                if (isStaffLoggedIn) {
-                    if (status === 'Lunch') {
-                        return `<button onclick="window.serveStatus('${userId}', 'Lunch')" class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-200 transition-all">Serve Lunch</button>`;
-                    }
-                    if (status === 'Dinner') {
-                        return `<button onclick="window.serveStatus('${userId}', 'Dinner')" class="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800 shadow-sm hover:bg-purple-200 transition-all">Serve Dinner</button>`;
-                    }
-                }
-                
+
+            let mealBadges = '';
+            let additionalBadges = '';
+            
+            const status = statusObject.lunch;
+            const statusD = statusObject.dinner;
+            
+            // Staff can ONLY serve on today's date
+            const canStaffServe = isStaffLoggedIn && selectedDate === todayDate;
+
+            if (canStaffServe) {
                 if (status === 'Lunch') {
-                    return '<span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 shadow-sm">Lunch</span>';
-                }
-                if (status === 'Dinner') {
-                    return '<span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800 shadow-sm">Dinner</span>';
+                    mealBadges += `<button onclick="window.serveStatus('${userId}', 'Lunch')" class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-200 transition-all">Serve Lunch</button>`;
+                } else if (status === 'Served-Lunch') {
+                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Lunch</span>';
                 }
 
-                if (status === 'Served-Lunch') {
-                    return '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Lunch</span>';
+                if (statusD === 'Dinner') {
+                    mealBadges += `<button onclick="window.serveStatus('${userId}', 'Dinner')" class="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800 shadow-sm hover:bg-purple-200 transition-all">Serve Dinner</button>`;
+                } else if (statusD === 'Served-Dinner') {
+                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Dinner</span>';
                 }
-                if (status === 'Served-Dinner') {
-                    return '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Dinner</span>';
+
+            } else {
+                 // Regular view for users or non-today dates for staff
+                 if (status === 'Lunch') {
+                    mealBadges += '<span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 shadow-sm">Lunch</span>';
+                } else if (status === 'Served-Lunch') {
+                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Lunch</span>';
                 }
-                return '';
-            }).join(' ');
+
+                if (statusD === 'Dinner') {
+                    mealBadges += '<span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800 shadow-sm">Dinner</span>';
+                } else if (statusD === 'Served-Dinner') {
+                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Dinner</span>';
+                }
+            }
+            
+            // Additional items are always visible
+            if (statusObject.mutton) {
+                additionalBadges += '<span class="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800 shadow-sm">Mutton</span>';
+            }
+            if (statusObject.egg_fish) {
+                additionalBadges += '<span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 shadow-sm">Egg(F)</span>';
+            }
+            if (statusObject.egg_poltry) {
+                additionalBadges += '<span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800 shadow-sm">Egg(P)</span>';
+            }
+
+            if (!mealBadges && !additionalBadges) {
+                 return '<span class="text-xs font-medium text-gray-500">N/A</span>';
+            }
+
+            return `<div class="flex flex-col items-end gap-1.5">
+                        <div class="flex gap-1.5">${mealBadges || ''}</div>
+                        <div class="flex gap-1.5">${additionalBadges || ''}</div>
+                    </div>`;
         }
         
+        /**
+         * Function for Staff to mark a meal as 'Served'.
+         * Exposed to window scope to be callable from button onclick.
+         */
         window.serveStatus = async (userId, statusToServe) => {
             console.log(`Staff serving ${statusToServe} to ${userId} for ${selectedDate}`);
-            if (!isStaffLoggedIn || !userId || !statusToServe) return;
+            if (!isStaffLoggedIn || !userId || !statusToServe || selectedDate !== todayDate) return;
 
             try {
                 const statusDocRef = doc(db, statusCollectionPath, selectedDate);
@@ -204,25 +267,28 @@
                     currentStatuses = docSnap.data().statuses || {};
                 }
                 
-                let userStatusArray = currentStatuses[userId] || [];
+                let userStatusObject = currentStatuses[userId] || {};
                 
-                const statusIndex = userStatusArray.indexOf(statusToServe);
-                if (statusIndex > -1) {
-                    userStatusArray[statusIndex] = `Served-${statusToServe}`; 
+                if (statusToServe === 'Lunch') {
+                    userStatusObject.lunch = 'Served-Lunch';
+                } else if (statusToServe === 'Dinner') {
+                    userStatusObject.dinner = 'Served-Dinner';
                 }
 
+                // Use setDoc with merge to update only this user's status
                 await setDoc(statusDocRef, { 
-                    statuses: { [userId]: userStatusArray }
+                    statuses: { [userId]: userStatusObject }
                 }, { merge: true });
 
                 const user = allUsersData.users.find(u => u.id === userId);
                 const userName = user ? user.name : 'Unknown';
 
+                // Log this action
                 await addDoc(collection(db, auditLogCollectionPath), {
                     userId: "STAFF",
                     userName: "Staff",
                     updatedForDate: selectedDate,
-                    newStatus: userStatusArray,
+                    newStatus: userStatusObject,
                     timestamp: new Date(),
                     note: `Staff served ${statusToServe} to ${userName}`
                 });
@@ -234,6 +300,9 @@
             }
         }
         
+        /**
+         * Gets all users filtered by the currently selected gender.
+         */
         function getFilteredUsers() {
             const filteredUsers = allUsersData.users.filter(u => u.gender === currentViewGender);
             
@@ -248,26 +317,42 @@
             return { filteredUsers, filteredGrouped };
         }
         
+        /**
+         * Calculates and displays the 5 main total counts at the top.
+         */
         function calculateAndDisplayDailyTotals() {
             let lunchTotal = 0;
             let dinnerTotal = 0;
+            let muttonTotal = 0;
+            let eggFishTotal = 0;
+            let eggPoultryTotal = 0;
             
             const { filteredUsers } = getFilteredUsers(); 
             const filteredUserIds = filteredUsers.map(u => u.id); 
             
             const statuses = Object.entries(currentStatusData); 
             
-            statuses.forEach(([userId, userStatusArray]) => {
+            statuses.forEach(([userId, statusObj]) => {
+                // Only count users of the currently viewed gender
                 if (filteredUserIds.includes(userId)) {
-                    if (userStatusArray.includes('Lunch') || userStatusArray.includes('Served-Lunch')) lunchTotal++;
-                    if (userStatusArray.includes('Dinner') || userStatusArray.includes('Served-Dinner')) dinnerTotal++;
+                    if (statusObj.lunch === 'Lunch' || statusObj.lunch === 'Served-Lunch') lunchTotal++;
+                    if (statusObj.dinner === 'Dinner' || statusObj.dinner === 'Served-Dinner') dinnerTotal++;
+                    if (statusObj.mutton === true) muttonTotal++;
+                    if (statusObj.egg_fish === true) eggFishTotal++;
+                    if (statusObj.egg_poltry === true) eggPoultryTotal++;
                 }
             });
             
             totalLunchCountEl.textContent = lunchTotal;
             totalDinnerCountEl.textContent = dinnerTotal;
+            totalMuttonCountEl.textContent = muttonTotal;
+            totalEggFishCountEl.textContent = eggFishTotal;
+            totalEggPoultryCountEl.textContent = eggPoultryTotal;
         }
         
+        /**
+         * Calculates monthly L/D totals for all users for the selected month.
+         */
         async function calculateAndDisplayMonthlyTotals(dateString) {
             if (isCalculatingTotals) return; 
             isCalculatingTotals = true;
@@ -276,12 +361,14 @@
             const [year, month] = dateString.split('-');
             const daysInMonth = new Date(year, month, 0).getDate();
             
+            // Create an array of all date strings for the selected month
             const dateStrings = [];
             for (let i = 1; i <= daysInMonth; i++) {
                 const day = String(i).padStart(2, '0');
                 dateStrings.push(`${year}-${month}-${day}`);
             }
 
+            // Fetch all status docs for the month in parallel
             const promises = dateStrings.map(date => getDoc(doc(db, statusCollectionPath, date)));
             
             let userMonthlyTotals = {}; 
@@ -289,18 +376,19 @@
             try {
                 const docSnaps = await Promise.all(promises);
 
+                // Process all docs
                 docSnaps.forEach(docSnap => {
                     if (docSnap.exists()) {
                         const statuses = docSnap.data().statuses || {}; 
                         
-                        for (const [userId, statusArray] of Object.entries(statuses)) {
+                        for (const [userId, statusObj] of Object.entries(statuses)) {
                             if (!userMonthlyTotals[userId]) {
                                 userMonthlyTotals[userId] = { Lunch: 0, Dinner: 0 };
                             }
-                            if (statusArray.includes('Lunch') || statusArray.includes('Served-Lunch')) {
+                            if (statusObj.lunch === 'Lunch' || statusObj.lunch === 'Served-Lunch') {
                                 userMonthlyTotals[userId].Lunch++;
                             }
-                            if (statusArray.includes('Dinner') || statusArray.includes('Served-Dinner')) {
+                            if (statusObj.dinner === 'Dinner' || statusObj.dinner === 'Served-Dinner') {
                                 userMonthlyTotals[userId].Dinner++;
                             }
                         }
@@ -315,13 +403,17 @@
                 console.error("Error calculating monthly totals: ", error);
             } finally {
                 isCalculatingTotals = false;
+                // Re-render cards to show the new totals
                 renderBatchCards();
             }
         }
 
+        /**
+         * Renders all the batch cards and user rows in the main roster area.
+         */
         function renderBatchCards() {
             if (!allUsersData.users.length) { 
-                if (!isAdminLoggedIn) return;
+                if (!isAdminLoggedIn) return; // Don't clear if not admin and no users
             }
             
             rosterDisplayArea.innerHTML = ''; 
@@ -341,10 +433,11 @@
                 
                 let userRows = '';
                 if (usersInBatch.length > 0) {
+                    // Sort users alphabetically within the batch
                     usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
                     
                     usersInBatch.forEach(user => {
-                        const userStatus = currentStatusData[user.id] || [];
+                        const userStatus = currentStatusData[user.id] || {};
                         const userTotals = currentMonthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
                         const isCurrentUser = user.id === currentUserDocId;
 
@@ -364,9 +457,7 @@
                                 ${depositCell}
                                 ${monthlyTotalCell}
                                 <td class="px-4 py-3.5 text-sm text-gray-700 text-right">
-                                    <div class="flex justify-end items-center gap-2">
-                                        ${formatStatus(userStatus, user.id)}
-                                    </div>
+                                    ${formatStatus(userStatus, user.id)}
                                 </td>
                             </tr>
                         `;
@@ -386,7 +477,7 @@
                                     <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Name</th>
                                     <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Deposit</th>
                                     <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
-                                    <th scope="col" class="px-4 py-2 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Status (Today)</th>
+                                    <th scope="col" class="px-4 py-2 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Status (${selectedDate.slice(5)})</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
@@ -399,9 +490,12 @@
             });
         }
 
+        /**
+         * Populates a 'name' dropdown based on a 'batch' dropdown selection.
+         */
         function populateNameDropdown(batchSelectEl, nameSelectEl, selectedValue) {
             const selectedBatch = batchSelectEl.value;
-            const { filteredGrouped } = getFilteredUsers(); 
+            const { filteredGrouped } = getFilteredUsers(); // Already filtered by gender
             
             nameSelectEl.innerHTML = ''; 
             nameSelectEl.disabled = true;
@@ -432,6 +526,9 @@
             }
         }
         
+        /**
+         * Updates all name dropdowns when gender or user data changes.
+         */
         function updateAllNameDropdowns() {
             const selectedUserBatch = userLoginBatch.value;
             const selectedUserName = userLoginName.value;
@@ -451,6 +548,9 @@
             }
         }
         
+        /**
+         * Main function to refresh the entire dashboard view.
+         */
         function updateDashboardView() {
             if (!db) return; 
             
@@ -466,12 +566,14 @@
             
             rosterTitle.textContent = `Real-time Roster (${currentViewGender}s)`;
             updateAllNameDropdowns();
-            calculateAndDisplayDailyTotals(); 
-            renderBatchCards(); 
+            calculateAndDisplayDailyTotals(); // Must run before renderBatchCards
+            renderBatchCards(); // Renders the main table
             
-            calculateAndDisplayMonthlyTotals(selectedDate); 
-            runDailyCarryOver(filteredUsers); 
+            // Asynchronous updates
+            calculateAndDisplayMonthlyTotals(selectedDate); // Will re-render cards when done
+            runDailyCarryOver(filteredUsers); // Will update statusData and trigger listeners
             
+            // Update Gender Toggle UI
             if (currentViewGender === 'Boy') {
                 boysViewBtn.classList.replace('bg-white', 'bg-indigo-600');
                 boysViewBtn.classList.replace('text-indigo-700', 'text-white');
@@ -485,6 +587,9 @@
             }
         }
         
+        /**
+         * Sets up the real-time listener for the users collection.
+         */
         function setupUserListener() {
             if (userListenerUnsubscribe) userListenerUnsubscribe(); 
             
@@ -510,7 +615,7 @@
                 
                 allUsersData = { users, grouped: groupedUsers };
                 
-                updateDashboardView(); 
+                updateDashboardView(); // Refresh view with new user data
 
             }, (error) => {
                 console.error("Error fetching roster users: ", error);
@@ -520,8 +625,11 @@
             });
         }
         
+        /**
+         * Sets up the real-time listener for a specific date's status document.
+         */
         function setupStatusListener(dateString) {
-            if (statusListenerUnsubscribe) statusListenerUnsubscribe(); 
+            if (statusListenerUnsubscribe) statusListenerUnsubscribe(); // Stop old listener
 
             const statusDocRef = doc(db, statusCollectionPath, dateString);
 
@@ -533,8 +641,10 @@
                     currentStatusData = {};
                 }
                 
+                // Refresh the whole view to show new totals and statuses
                 updateDashboardView(); 
                 
+                // Also update the checkboxes if a user is logged in
                 if (currentUserDocId) {
                     updateCheckboxesForCurrentUser();
                 }
@@ -545,25 +655,61 @@
             });
         }
         
+        /**
+         * Updates the user update panel (checkboxes) based on current status and date lock.
+         */
         function updateCheckboxesForCurrentUser() {
             if (!currentUserDocId) return;
-            const userStatus = currentStatusData[currentUserDocId] || [];
-            
-            const hasServedLunch = userStatus.includes('Served-Lunch');
-            statusLunchCheckbox.checked = userStatus.includes('Lunch') || hasServedLunch;
-            statusLunchCheckbox.disabled = hasServedLunch;
 
-            const hasServedDinner = userStatus.includes('Served-Dinner');
-            statusDinnerCheckbox.checked = userStatus.includes('Dinner') || hasServedDinner;
-            statusDinnerCheckbox.disabled = hasServedDinner;
+            const userStatus = currentStatusData[currentUserDocId] || {};
+            
+            // User can ONLY update if the date is in the future (NOT today or past)
+            // Logic changed: User can update ONLY future dates. Not today.
+            const canUserUpdate = selectedDate > todayDate;
+
+            // Show/hide date lock message
+            dateLockMessage.classList.toggle('hidden', canUserUpdate);
+            
+            // Enable/disable the whole update UI
+            const allowUpdate = canUserUpdate && !isStaffLoggedIn;
+            saveStatusBtn.disabled = !allowUpdate;
+            saveStatusBtn.classList.toggle('opacity-50', !allowUpdate);
+            saveStatusBtn.classList.toggle('cursor-not-allowed', !allowUpdate);
+
+            // Check "Served" status. If served, user cannot change it.
+            const hasServedLunch = userStatus.lunch === 'Served-Lunch';
+            statusLunchCheckbox.checked = userStatus.lunch === 'Lunch' || hasServedLunch;
+            statusLunchCheckbox.disabled = hasServedLunch || !allowUpdate;
+
+            const hasServedDinner = userStatus.dinner === 'Served-Dinner';
+            statusDinnerCheckbox.checked = userStatus.dinner === 'Dinner' || hasServedDinner;
+            statusDinnerCheckbox.disabled = hasServedDinner || !allowUpdate;
+            
+            // Set additional item checkboxes
+            statusMuttonCheckbox.checked = userStatus.mutton === true;
+            statusEggFishCheckbox.checked = userStatus.egg_fish === true;
+            statusEggPoultryCheckbox.checked = userStatus.egg_poltry === true;
+            
+            // Disable additional items if update is not allowed
+            statusMuttonCheckbox.disabled = !allowUpdate;
+            statusEggFishCheckbox.disabled = !allowUpdate;
+            statusEggPoultryCheckbox.disabled = !allowUpdate;
         }
 
+        /**
+         * Automatically carries over status from yesterday for users who haven't updated.
+         */
         async function runDailyCarryOver(filteredUsers) {
-            if (isCarryingOver || !filteredUsers.length) return;
+            // Only run for today or future dates
+            if (isCarryingOver || !filteredUsers.length || selectedDate < todayDate) {
+                isCarryingOver = false;
+                return;
+            }
             isCarryingOver = true;
             
             console.log("Running daily carry-over check...");
 
+            // Find users of the current gender who are missing a status for the selected date
             const usersMissingStatus = filteredUsers.filter(u => !currentStatusData[u.id]);
             
             if (usersMissingStatus.length === 0) {
@@ -592,17 +738,19 @@
                 const auditLogPromises = [];
                 
                 usersMissingStatus.forEach(user => {
-                    const yesterdayUserStatus = yesterdayStatuses[user.id] || [];
+                    const yesterdayUserStatus = yesterdayStatuses[user.id] || {};
                     
-                    const carriedOverStatus = yesterdayUserStatus.map(s => {
-                        if (s === 'Served-Lunch') return 'Lunch';
-                        if (s === 'Served-Dinner') return 'Dinner';
-                        return s;
-                    }).filter(s => s === 'Lunch' || s === 'Dinner'); 
+                    // Only carry over if there *was* a status yesterday
+                    if (Object.keys(yesterdayUserStatus).length > 0) {
+                        const carriedOverStatus = { ...yesterdayUserStatus }; 
+                        
+                        // Reset "Served" status back to "On"
+                        if (carriedOverStatus.lunch === 'Served-Lunch') carriedOverStatus.lunch = 'Lunch';
+                        if (carriedOverStatus.dinner === 'Served-Dinner') carriedOverStatus.dinner = 'Dinner';
 
-                    if (carriedOverStatus.length > 0) {
                         updatesToMerge[user.id] = carriedOverStatus;
                         
+                        // Log this automatic action
                         auditLogPromises.push(addDoc(collection(db, auditLogCollectionPath), {
                             userId: user.id,
                             userName: user.name,
@@ -617,11 +765,13 @@
                 if (Object.keys(updatesToMerge).length > 0) {
                     console.log("Applying carry-over for users:", Object.keys(updatesToMerge));
                     
+                    // Merge these updates into today's status document
                     const todayStatusDocRef = doc(db, statusCollectionPath, selectedDate);
                     await setDoc(todayStatusDocRef, {
                         statuses: updatesToMerge
                     }, { merge: true });
                     
+                    // Wait for all logs to be written
                     await Promise.all(auditLogPromises);
                     
                 } else {
@@ -635,18 +785,23 @@
             }
         }
 
+        // --- Event Handlers ---
+
         function handleDateChange(e) {
             selectedDate = e.target.value;
             console.log("Date changed to:", selectedDate);
             
-            currentStatusData = {}; 
-            currentMonthlyTotals = {}; 
+            currentStatusData = {}; // Clear old data
+            currentMonthlyTotals = {}; // Clear old totals
             
-            if (statusListenerUnsubscribe) statusListenerUnsubscribe();
+            if (statusListenerUnsubscribe) statusListenerUnsubscribe(); // Stop old listener
 
+            // Start new listener for the new date
             setupStatusListener(selectedDate);
             
-            updateDashboardView(); 
+            // Refresh UI (will be partial, new data will trigger full render)
+            updateDashboardView();
+            updateCheckboxesForCurrentUser();
         }
 
         function handleGenderChange(newGender) {
@@ -655,6 +810,7 @@
             console.log("Gender changed to:", newGender);
             currentViewGender = newGender;
             
+            // Reset user login
             userLoginBatch.value = '';
             userLoginName.value = '';
             userLoginName.disabled = true;
@@ -662,6 +818,7 @@
             isLoggedIn = false;
             updateSection.classList.add('hidden');
             
+            // Refresh entire view for new gender
             updateDashboardView();
         }
 
@@ -669,16 +826,19 @@
             try {
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
+                        // User is signed in (anonymously)
                         console.log("User is signed in:", user.uid);
                         userId = user.uid; 
                         authStatus.textContent = `Connected`;
                         authStatus.classList.remove('bg-red-200', 'text-red-800');
                         authStatus.classList.add('bg-green-200', 'text-green-800');
                         
+                        // Start data listeners
                         setupUserListener();
                         setupStatusListener(selectedDate);
 
                     } else {
+                        // User is signed out, attempt to sign in
                         console.log("User is signed out. Signing in anonymously...");
                         authStatus.textContent = "Connecting...";
                         authStatus.classList.remove('bg-green-200', 'text-green-800');
@@ -686,12 +846,14 @@
                         
                         try {
                             await signInAnonymously(auth);
+                            // Listener will pick up the new auth state
                         } catch (authError) {
                             console.error("Anonymous Authentication Error:", authError);
                             authStatus.textContent = "Authentication Failed";
                             loadingSpinner.classList.add('hidden'); 
                             appContent.classList.remove('opacity-0'); 
 
+                            // Check for the specific config error
                             if (authError.code === 'auth/configuration-not-found') {
                                 const errorHtml = `
                                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg max-w-3xl mx-auto mt-10" role="alert">
@@ -718,14 +880,19 @@
             }
         }
         
+        // --- Setup Event Listeners ---
+        
+        // Main controls
         datePicker.addEventListener('change', handleDateChange);
         boysViewBtn.addEventListener('click', () => handleGenderChange('Boy'));
         girlsViewBtn.addEventListener('click', () => handleGenderChange('Girl'));
         
+        // Admin Login
         adminLoginBtn.addEventListener('click', () => adminModal.classList.remove('hidden'));
         closeModalBtn.addEventListener('click', () => {
             adminModal.classList.add('hidden');
             adminLoginError.classList.add('hidden');
+            adminLoginForm.reset();
         });
 
         adminLoginForm.addEventListener('submit', (e) => {
@@ -749,11 +916,13 @@
             adminSection.classList.add('hidden');
         });
         
+        // Staff Login
         staffLoginBtn.addEventListener('click', () => staffModal.classList.remove('hidden'));
         
         closeStaffModalBtn.addEventListener('click', () => {
             staffModal.classList.add('hidden');
             staffLoginError.classList.add('hidden');
+            staffLoginForm.reset();
         });
 
         staffLoginForm.addEventListener('submit', (e) => {
@@ -767,15 +936,17 @@
                 staffLoginError.classList.add('hidden');
                 staffLoginForm.reset();
                 
+                // Change UI to Staff Mode
                 adminLoginBtn.classList.add('hidden');
                 staffLoginBtn.classList.add('hidden');
                 staffLogoutBtn.classList.remove('hidden');
-                mainControls.classList.add('hidden');
-                genderToggleSection.classList.add('md:col-span-3'); 
+                mainControls.classList.add('hidden'); // Hide left control panel
+                genderToggleSection.classList.add('md:col-span-3'); // Make gender toggle span full
                 mainRoster.classList.remove('md:col-span-2');
-                mainRoster.classList.add('md:col-span-3');
+                mainRoster.classList.add('md:col-span-3'); // Make roster span full
                 
-                renderBatchCards(); 
+                updateCheckboxesForCurrentUser(); // Disable user update panel
+                renderBatchCards(); // Re-render cards to show 'Serve' buttons
                 
             } else {
                 staffLoginError.classList.remove('hidden');
@@ -785,17 +956,20 @@
         staffLogoutBtn.addEventListener('click', () => {
             isStaffLoggedIn = false;
             
+            // Revert UI to normal mode
             adminLoginBtn.classList.remove('hidden');
             staffLoginBtn.classList.remove('hidden');
             staffLogoutBtn.add('hidden');
-            mainControls.classList.remove('hidden');
+            mainControls.classList.remove('hidden'); // Show left panel
             genderToggleSection.classList.remove('md:col-span-3');
             mainRoster.classList.remove('md:col-span-3');
-            mainRoster.classList.add('md:col-span-2');
+            mainRoster.classList.add('md:col-span-2'); // Roster back to 2/3
             
-            renderBatchCards(); 
+            updateCheckboxesForCurrentUser(); // Re-enable user update panel if needed
+            renderBatchCards(); // Re-render cards to hide 'Serve' buttons
         });
 
+        // Admin: Add User Form
         addUserForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!isAdminLoggedIn) return; 
@@ -829,6 +1003,7 @@
             }
         });
         
+        // Admin: Update Deposit Form
         adminDepositBatch.addEventListener('change', (e) => {
             populateNameDropdown(adminDepositBatch, adminDepositName);
             adminDepositName.value = ''; 
@@ -887,15 +1062,17 @@
             setTimeout(() => adminDepositMessage.classList.add('hidden'), 3000);
         });
 
+        // User Login Dropdowns
         userLoginBatch.addEventListener('change', (e) => {
             populateNameDropdown(userLoginBatch, userLoginName);
             
+            // Reset login state
             userLoginName.value = '';
             isLoggedIn = false;
             currentUserDocId = null;
             updateSection.classList.add('hidden');
             saveMessage.classList.add('hidden');
-            renderBatchCards(); 
+            renderBatchCards(); // Re-render to remove highlight
         });
 
         userLoginName.addEventListener('change', async (e) => { 
@@ -905,40 +1082,38 @@
                 isLoggedIn = true;
                 currentUserDocId = docId;
                 
-                updateCheckboxesForCurrentUser();
+                updateCheckboxesForCurrentUser(); // Check date lock, set checkboxes
                 
                 updateSection.classList.remove('hidden');
                 saveMessage.classList.add('hidden');
-                renderBatchCards(); 
+                renderBatchCards(); // Re-render to add highlight
                 
             } else {
                 isLoggedIn = false;
                 currentUserDocId = null;
                 updateSection.classList.add('hidden');
                 saveMessage.classList.add('hidden');
-                renderBatchCards(); 
+                renderBatchCards(); // Re-render to remove highlight
             }
         });
 
+        // User: Save Status Button
         saveStatusBtn.addEventListener('click', async () => {
-            if (!isLoggedIn || !currentUserDocId || !userId) return;
+            if (!isLoggedIn || !currentUserDocId || !userId || selectedDate <= todayDate) return;
 
-            const newStatus = [];
-            const oldStatus = currentStatusData[currentUserDocId] || [];
-
-            if (statusLunchCheckbox.disabled) {
-                if(oldStatus.includes('Served-Lunch')) newStatus.push('Served-Lunch');
-            } else if (statusLunchCheckbox.checked) {
-                newStatus.push('Lunch');
-            }
+            const oldStatus = currentStatusData[currentUserDocId] || {};
+            const newStatus = { ...oldStatus }; // Start with old status
             
-            if (statusDinnerCheckbox.disabled) {
-                if(oldStatus.includes('Served-Dinner')) newStatus.push('Served-Dinner');
-            } else if (statusDinnerCheckbox.checked) {
-                newStatus.push('Dinner');
-            }
+            // Only update fields user can control. Do not reset "served" status.
+            newStatus.lunch = statusLunchCheckbox.checked ? (oldStatus.lunch === 'Served-Lunch' ? 'Served-Lunch' : 'Lunch') : null;
+            newStatus.dinner = statusDinnerCheckbox.checked ? (oldStatus.dinner === 'Served-Dinner' ? 'Served-Dinner' : 'Dinner') : null;
+            
+            newStatus.mutton = statusMuttonCheckbox.checked;
+            newStatus.egg_fish = statusEggFishCheckbox.checked;
+            newStatus.egg_poltry = statusEggPoultryCheckbox.checked;
 
             try {
+                // Merge this update into the date's status doc
                 const statusDocRef = doc(db, statusCollectionPath, selectedDate);
                 await setDoc(statusDocRef, { 
                     statuses: { [currentUserDocId]: newStatus }
@@ -947,6 +1122,7 @@
                 const user = allUsersData.users.find(u => u.id === currentUserDocId);
                 const userName = user ? user.name : 'Unknown';
 
+                // Log this action
                 await addDoc(collection(db, auditLogCollectionPath), {
                     userId: currentUserDocId,
                     userName: userName,
@@ -969,42 +1145,91 @@
             setTimeout(() => saveMessage.classList.add('hidden'), 3000);
         });
         
+        /**
+         * Helper for CSV to get totals for the summary.
+         */
+        function getDailyTotalsForCSV(statusData, filteredUserIds) {
+            let lunch = 0, dinner = 0, mutton = 0, egg_fish = 0, egg_poltry = 0;
+            
+            Object.entries(statusData).forEach(([userId, statusObj]) => {
+                if (filteredUserIds.includes(userId)) {
+                    if (statusObj.lunch === 'Lunch' || statusObj.lunch === 'Served-Lunch') lunch++;
+                    if (statusObj.dinner === 'Dinner' || statusObj.dinner === 'Served-Dinner') dinner++;
+                    if (statusObj.mutton === true) mutton++;
+                    if (statusObj.egg_fish === true) egg_fish++;
+                    if (statusObj.egg_poltry === true) egg_poltry++;
+                }
+            });
+            return { lunch, dinner, mutton, egg_fish, egg_poltry };
+        }
+
+        // Download CSV Button
         downloadRosterBtn.addEventListener('click', async () => {
             if (!db || !userId) { return; }
 
             downloadRosterBtn.textContent = "Generating...";
             downloadRosterBtn.disabled = true;
 
-            let csvContent = "Batch,Name,Deposit,Status (Selected Date),Monthly Lunch,Monthly Dinner\n";
+            const header = "Name,Deposit,Lunch,Dinner,Mutton,Egg (Fish),Egg (Poultry),Monthly Lunch,Monthly Dinner\n";
+            let csvContent = "";
+            
             try {
-                const { filteredUsers } = getFilteredUsers(); 
-                const users = filteredUsers; 
+                const { filteredUsers, filteredGrouped } = getFilteredUsers(); 
                 const dateStatuses = currentStatusData;
                 
+                // Ensure monthly totals are calculated if not already
                 if (Object.keys(currentMonthlyTotals).length === 0) {
                     await calculateAndDisplayMonthlyTotals(selectedDate);
                 }
                 const monthlyTotals = currentMonthlyTotals;
 
-                users.sort((a, b) => {
-                   if (a.batch === b.batch) return a.name.localeCompare(b.name);
-                   return a.batch.localeCompare(b.batch);
-                });
+                // Loop through batches in order
+                BATCHES.forEach(batch => {
+                    const usersInBatch = filteredGrouped[batch] || [];
+                    if (usersInBatch.length > 0) {
+                        
+                        csvContent += `Batch ${batch}\n`;
+                        csvContent += header;
+                        
+                        // Sort users by name within batch
+                        usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
 
-                users.forEach(user => {
-                    const userStatus = dateStatuses[user.id] || [];
-                    const statusText = userStatus.join(' & ') || 'N/A';
-                    const totals = monthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
-                    
-                    csvContent += `${user.batch},${user.name},${user.deposit || 0},"${statusText}",${totals.Lunch},${totals.Dinner}\n`;
+                        usersInBatch.forEach(user => {
+                            const userStatus = dateStatuses[user.id] || {};
+                            const totals = monthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
+                            
+                            const lunchText = userStatus.lunch || 'N/A';
+                            const dinnerText = userStatus.dinner || 'N/A';
+                            const muttonText = userStatus.mutton ? 'Yes' : 'No';
+                            const eggFishText = userStatus.egg_fish ? 'Yes' : 'No';
+                            const eggPoultryText = userStatus.egg_poltry ? 'Yes' : 'No';
+                            
+                            csvContent += `"${user.name}",${user.deposit || 0},"${lunchText}","${dinnerText}","${muttonText}","${eggFishText}","${eggPoultryText}",${totals.Lunch},${totals.Dinner}\n`;
+                        });
+                        
+                        csvContent += "\n"; // Add a blank line between batches
+                    }
                 });
+                
+                // Add summary section
+                const dailyTotals = getDailyTotalsForCSV(dateStatuses, filteredUsers.map(u => u.id));
+                
+                csvContent += "\n\n";
+                csvContent += `Summary for ${selectedDate} (${currentViewGender}s)\n`;
+                csvContent += "Item,Total Count\n";
+                csvContent += `Total Lunch,${dailyTotals.lunch}\n`;
+                csvContent += `Total Dinner,${dailyTotals.dinner}\n`;
+                csvContent += `Total Mutton,${dailyTotals.mutton}\n`;
+                csvContent += `Total Egg (Fish),${dailyTotals.egg_fish}\n`;
+                csvContent += `Total Egg (Poultry),${dailyTotals.egg_poltry}\n`;
 
+                // Create and trigger download
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement("a");
                 if (link.download !== undefined) {
                     const url = URL.createObjectURL(blob);
                     link.setAttribute("href", url);
-                    link.setAttribute("download", `smc_meal_roster_${currentViewGender.toLowerCase()}_${selectedDate.substring(0, 7)}.csv`);
+                    link.setAttribute("download", `smc_meal_roster_${currentViewGender.toLowerCase()}_${selectedDate}.csv`);
                     link.style.visibility = 'hidden';
                     document.body.appendChild(link);
                     link.click();
@@ -1018,9 +1243,10 @@
             }
         });
 
+        // --- Initial App Load ---
         if(db) {
-            datePicker.value = selectedDate; 
-            handleAuth();
+            datePicker.value = selectedDate; // Set default date to tomorrow
+            handleAuth(); // Start auth process
         }
 
     </script>
@@ -1056,6 +1282,7 @@
         <div class="spinner w-12 h-12 border-4 border-gray-200 rounded-full"></div>
     </div>
 
+    <!-- Admin Login Modal -->
     <div id="admin-login-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
         <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm" @click.stop>
             <div class="flex justify-between items-center border-b pb-3 mb-4">
@@ -1065,11 +1292,11 @@
             <form id="admin-login-form" class="space-y-4">
                 <div>
                     <label for="adminId" class="block text-sm font-medium text-gray-700">Admin ID</label>
-                    <input type="text" id="adminId" value="admin" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <input type="text" id="adminId" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                 </div>
                 <div>
                     <label for="adminPass" class="block text-sm font-medium text-gray-700">Password</label>
-                    <input type="password" id="adminPass" value="admin123" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <input type="password" id="adminPass" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                 </div>
                 <p id="admin-login-error" class="text-sm text-red-600 hidden">Invalid ID or Password.</p>
                 <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Login</button>
@@ -1077,6 +1304,7 @@
         </div>
     </div>
     
+    <!-- Staff Login Modal -->
     <div id="staff-login-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
         <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm" @click.stop>
             <div class="flex justify-between items-center border-b pb-3 mb-4">
@@ -1086,11 +1314,11 @@
             <form id="staff-login-form" class="space-y-4">
                 <div>
                     <label for="staffId" class="block text-sm font-medium text-gray-700">Staff ID</label>
-                    <input type="text" id="staffId" value="staff" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <input type="text" id="staffId" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                 </div>
                 <div>
                     <label for="staffPass" class="block text-sm font-medium text-gray-700">Password</label>
-                    <input type="password" id="staffPass" value="staff123" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <input type="password" id="staffPass" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                 </div>
                 <p id="staff-login-error" class="text-sm text-red-600 hidden">Invalid ID or Password.</p>
                 <button type="submit" class="w-full bg-teal-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">Login</button>
@@ -1098,8 +1326,9 @@
         </div>
     </div>
 
-
+    <!-- Main App Content -->
     <div id="app-content" class="opacity-0 transition-opacity duration-500">
+        <!-- Header -->
         <header class="bg-white shadow-md border-b border-gray-200">
             <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
                 <div class="flex justify-between items-center h-16">
@@ -1124,6 +1353,7 @@
             </div>
         </header>
 
+        <!-- Gender Toggle -->
         <div id="gender-toggle-section" class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl mt-6">
             <div class="flex items-center p-1 bg-indigo-100 rounded-lg max-w-xs">
                 <button id="boys-view-btn" class="flex-1 w-full px-4 py-2 rounded-md font-semibold text-sm bg-indigo-600 text-white shadow focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
@@ -1135,17 +1365,21 @@
             </div>
         </div>
 
+        <!-- Main Grid Layout -->
         <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8 pt-4">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                 
+                <!-- Left Control Column -->
                 <div id="main-controls" class="md:col-span-1 space-y-6">
 
+                    <!-- Admin Panel (Hidden by default) -->
                     <div id="admin-section" class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hidden">
                         <div class="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
                             <h3 class="text-xl font-bold text-gray-900">Admin Panel</h3>
                             <button id="admin-logout-btn" class="text-sm text-red-600 hover:text-red-800 font-medium">Logout</button>
                         </div>
                         
+                        <!-- Add User Sub-section -->
                         <div class="border-b border-gray-200 pb-5">
                             <h4 class="text-md font-semibold text-gray-800 mb-3">Notun User Jog Korun</h4>
                             <form id="add-user-form" class="space-y-4">
@@ -1188,6 +1422,7 @@
                             </form>
                         </div>
 
+                        <!-- Update Deposit Sub-section -->
                         <div class="pt-5">
                             <h4 class="text-md font-semibold text-gray-800 mb-3">User Deposit Update Korun</h4>
                             <form id="admin-deposit-form" class="space-y-4">
@@ -1220,6 +1455,7 @@
                         </div>
                     </div>
 
+                    <!-- User Login Panel -->
                     <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 sticky top-8">
                         <h3 class="text-xl font-bold mb-4 border-b border-gray-200 pb-3 text-gray-900">User Login & Update</h3>
                         
@@ -1244,13 +1480,19 @@
                             </div>
                         </div>
 
-
+                        <!-- User Update Panel (Hidden by default) -->
                         <div id="update-section" class="mt-6 hidden">
                             <h4 class="block text-sm font-medium text-gray-700 mb-3">Step 3: Apnar Status Update Korun</h4>
+                            
+                            <!-- Date Lock Message -->
+                            <div id="date-lock-message" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-3 rounded-md mb-4">
+                                <p class="text-sm font-medium">Shudhu agami kaler (ba porer) roster update kora jabe. Ajker ba purono roster update kora jabe na.</p>
+                            </div>
+
                             <fieldset class="space-y-3">
                                 <div class="relative flex items-start">
                                     <div class="flex h-6 items-center">
-                                        <input id="status-lunch" name="status-lunch" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50">
+                                        <input id="status-lunch" name="status-lunch" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed">
                                     </div>
                                     <div class="ml-3 text-sm leading-6">
                                         <label for="status-lunch" class="font-medium text-gray-900">Lunch</label>
@@ -1258,13 +1500,41 @@
                                 </div>
                                 <div class="relative flex items-start">
                                     <div class="flex h-6 items-center">
-                                        <input id="status-dinner" name="status-dinner" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50">
+                                        <input id="status-dinner" name="status-dinner" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed">
                                     </div>
                                     <div class="ml-3 text-sm leading-6">
                                         <label for="status-dinner" class="font-medium text-gray-900">Dinner</label>
                                     </div>
                                 </div>
+                                
+                                <hr class="my-2 border-gray-200">
+                                
+                                <div class="relative flex items-start">
+                                    <div class="flex h-6 items-center">
+                                        <input id="status-mutton" name="status-mutton" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    </div>
+                                    <div class="ml-3 text-sm leading-6">
+                                        <label for="status-mutton" class="font-medium text-gray-900">Additional: Mutton</label>
+                                    </div>
+                                </div>
+                                <div class="relative flex items-start">
+                                    <div class="flex h-6 items-center">
+                                        <input id="status-egg-fish" name="status-egg-fish" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    </div>
+                                    <div class="ml-3 text-sm leading-6">
+                                        <label for="status-egg-fish" class="font-medium text-gray-900">Additional: Egg (Fish)</label>
+                                    </div>
+                                </div>
+                                <div class="relative flex items-start">
+                                    <div class="flex h-6 items-center">
+                                        <input id="status-egg-poultry" name="status-egg-poultry" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    </div>
+                                    <div class="ml-3 text-sm leading-6">
+                                        <label for="status-egg-poultry" class="font-medium text-gray-900">Additional: Egg (Poultry)</label>
+                                    </div>
+                                </div>
                             </fieldset>
+                            
                             <button id="save-status-btn" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mt-5">
                                 Update Save Korun
                             </button>
@@ -1274,19 +1544,34 @@
 
                 </div>
                 
+                <!-- Right Data Column -->
                 <div id="main-roster" class="md:col-span-2 space-y-6">
                     
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-5 flex items-center justify-between">
-                            <h4 class="text-lg font-semibold text-blue-800">Total Lunch (Selected Date)</h4>
-                            <p id="total-lunch-count" class="text-3xl font-extrabold text-blue-600">0</p>
+                    <!-- Daily Total Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
+                            <h4 class="text-md font-semibold text-blue-800">Total Lunch</h4>
+                            <p id="total-lunch-count" class="text-3xl font-extrabold text-blue-600 text-right">0</p>
                         </div>
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-5 flex items-center justify-between">
-                            <h4 class="text-lg font-semibold text-purple-800">Total Dinner (Selected Date)</h4>
-                            <p id="total-dinner-count" class="text-3xl font-extrabold text-purple-600">0</p>
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
+                            <h4 class="text-md font-semibold text-purple-800">Total Dinner</h4>
+                            <p id="total-dinner-count" class="text-3xl font-extrabold text-purple-600 text-right">0</p>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
+                            <h4 class="text-md font-semibold text-rose-800">Total Mutton</h4>
+                            <p id="total-mutton-count" class="text-3xl font-extrabold text-rose-600 text-right">0</p>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
+                            <h4 class="text-md font-semibold text-amber-800">Total Egg (Fish)</h4>
+                            <p id="total-egg-fish-count" class="text-3xl font-extrabold text-amber-600 text-right">0</p>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
+                            <h4 class="text-md font-semibold text-yellow-800">Total Egg (Poultry)</h4>
+                            <p id="total-egg-poultry-count" class="text-3xl font-extrabold text-yellow-600 text-right">0</p>
                         </div>
                     </div>
 
+                    <!-- Roster Header -->
                     <div class="flex flex-wrap justify-between items-center gap-4 border-b border-gray-300 pb-4">
                         <h3 id="roster-title" class="text-2xl font-bold text-gray-900">Real-time Roster (Boys)</h3>
                         <button id="download-roster-btn" class="bg-indigo-600 text-white py-2 px-5 rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md">
@@ -1294,6 +1579,7 @@
                         </button>
                     </div>
 
+                    <!-- Roster Batch Cards Area -->
                     <div id="roster-display-area" class="grid grid-cols-1 lg:grid-cols-2 gap-5 roster-grid-container">
                         <p class="text-center text-gray-500 col-span-full">Loading users...</p>
                     </div>
@@ -1305,4 +1591,5 @@
 
 </body>
 </html>
+
 
