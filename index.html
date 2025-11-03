@@ -406,15 +406,15 @@
             documentId // Import documentId for query
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- PLACEHOLDER FIREBASE CONFIG ---
-        // !! REPLACE THIS WITH YOUR OWN FIREBASE PROJECT CONFIGURATION !!
+        // --- UPDATED FIREBASE CONFIG ---
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_AUTH_DOMAIN",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyApOnhZJ8HkpQhKSiPK2AvdRtSP5ddDcrI",
+            authDomain: "new-meal-28d9e.firebaseapp.com",
+            projectId: "new-meal-28d9e",
+            storageBucket: "new-meal-28d9e.appspot.com", // Corrected storageBucket domain
+            messagingSenderId: "165343467753",
+            appId: "1:165343467753:web:41b4d4dd2a3768e410f878"
+            // measurementId is not needed for this app
         };
         // ------------------------------------
 
@@ -614,12 +614,6 @@
         
         async function initializeAppAndAuth() {
             try {
-                // Check if firebase config is just placeholders
-                if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-                    showCustomAlert("Firebase config deya hoyni. HTML file-ti edit korun ebong apnar project configuration add korun.", "error");
-                    return;
-                }
-                
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
@@ -644,6 +638,8 @@
                     authErrorModal.classList.remove('hidden');
                 } else if (error.code === 'invalid-api-key') {
                     showCustomAlert("Invalid Firebase API Key. Apnar firebaseConfig object-ti check korun.", "error");
+                } else {
+                     showCustomAlert("Firebase connect hote parchena. Apnar internet connection ebong config check korun.", "error");
                 }
             }
         }
@@ -687,7 +683,7 @@
             staffLogoutBtn.addEventListener('click', handleStaffLogout);
 
             // User Panel
-            userBatchSelect.addEventListener('change', populateUserNameDropdown);
+            userBatchSelect.addEventListener('change', populateUserLoginDropdown); // FIX: Was populateUserNameDropdown
             userNameSelect.addEventListener('change', handleUserSelect);
             userUpdateSaveBtn.addEventListener('click', handleUserStatusUpdate);
             
@@ -1433,7 +1429,7 @@
                     if (status.egg_poltry) summary.egg_poltry++;
                     
                     // Add row (quoting all fields to handle potential commas in names)
-                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}"\r\n`;
+                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}"\r\n`; // FIX: Was mMutton
                 });
 
                 csvContent += "\r\n"; // Add space between batches
