@@ -3,1591 +3,1475 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Chosen Palette: Indigo, Emerald, Rose -->
-    <!-- Application Structure Plan: A single-page dashboard. A 3-column grid layout (1 for controls, 2 for data). The left column (Controls) is sticky and contains Admin, Staff, and User login/controls. This is task-oriented and separates actions from viewing. The right column (Data) shows total counts (now 5 items) and the main roster, which is a grid of "Batch Cards". This is a thematic structure. User flow: 1. (Optional) Admin/Staff login. 2. Select Gender (Boy/Girl). 3. Select Date (defaults to TOMORROW). 4. (User) Login to update personal status (now with 5 checkboxes). Users can ONLY update future dates (tomorrow onwards). 5. (Staff) Click L/D badges to mark as 'Served'. Staff can ONLY serve for TODAY's date. This structure is robust and handles complex user roles and date-based permissions. -->
-    <!-- Visualization & Content Choices: 
-        - Report Info: Daily Totals (L, D, Mutton, Egg-F, Egg-P) -> Goal: Inform -> Viz: HTML "Stat Cards" (now 5 cards, in a 2/3 grid) -> Interaction: Updates on Date/Gender change -> Justification: Quick summary for admin/staff.
-        - Report Info: User List -> Goal: Organize/Inform -> Viz: HTML Tables inside "Batch Cards" -> Interaction: Filtered by Gender/Date. Highlights current user. Shows status. -> Justification: Groups users logically.
-        - Report Info: User Status (L/D + Additional Items) -> Goal: Inform/Compare -> Viz: HTML Badges (color-coded). L/D badges are interactive for Staff. -> Interaction: (Staff) Click L/D *only on today's date*. (User) Updated via control panel *only for future dates*. -> Justification: Clear visual cue for all statuses.
-        - Report Info: User Deposit -> Goal: Inform -> Viz: Text in table -> Interaction: (Admin) Updated via control panel. -> Justification: Simple display.
-        - Report Info: Monthly Totals (L/D only) -> Goal: Compare (Trends) -> Viz: Text in table (L: X, D: Y) -> Interaction: Recalculates on date/status change. -> Justification: Provides per-person summary.
-        - Report Info: User Update -> Goal: Input -> Viz: HTML Form (Dropdowns, 5 Checkboxes) -> Interaction: Dynamically populated. *Locked for today/past dates*. -> Justification: Logical flow for new items and date locking.
-        - Report Info: Staff Serve -> Goal: Input -> Viz: Clickable badges in roster -> Interaction: *Enabled only for today's date*. -> Justification: Prevents staff from serving past/future meals.
-        - Report Info: Download -> Goal: Export/Analyze -> Viz: CSV File -> Interaction: Button click. -> Justification: "Pic er moto" request implemented. CSV now has batch-wise sections with headers, plus a final summary total section.
-    -->
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <title>SMC Meal Dashboard</title>
+    <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Inter Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, 
-            signInAnonymously, 
-            onAuthStateChanged 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, 
-            collection, 
-            addDoc, 
-            onSnapshot, 
-            doc, 
-            updateDoc, 
-            getDocs,
-            query,
-            setLogLevel,
-            setDoc,
-            getDoc 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // User's Firebase Config
-        const firebaseConfig = {
-          apiKey: "AIzaSyApOnhZJ8HkpQhKSiPK2AvdRtSP5ddDcrI",
-          authDomain: "new-meal-28d9e.firebaseapp.com",
-          projectId: "new-meal-28d9e",
-          storageBucket: "new-meal-28d9e.firebasestorage.app",
-          messagingSenderId: "165343467753",
-          appId: "1:165343467753:web:41b4d4dd2a3768e410f878",
-          measurementId: "G-ZM4DB245J9"
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- 3. Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
         };
-        
-        let db, auth, userId;
-        // Shared database paths
-        const usersCollectionPath = "roster-users";
-        const statusCollectionPath = "roster-status-by-date";
-        const auditLogCollectionPath = "roster-audit-log";
-
-        try {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            setLogLevel('Debug');
-            console.log("Firebase Initialized with User's Config. Project ID:", firebaseConfig.projectId);
-
-        } catch (error) {
-            console.error("Firebase Initialization Error:", error.message);
-            document.getElementById('app-content').innerHTML = `
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
-                  <strong class="font-bold">Error!</strong>
-                  <span class="block sm:inline">Firebase initialize hote shomossha hocche. Config thik ache kina check korun.</span>
-                </div>`;
-            document.getElementById('loading-spinner').classList.add('hidden');
-        }
-        
-        // State variables
-        let currentUserDocId = null;
-        let isLoggedIn = false;
-        let isAdminLoggedIn = false;
-        let isStaffLoggedIn = false; 
-        const BATCHES = ["10", "11", "12", "13", "14"];
-        let currentViewGender = 'Boy'; 
-
-        function getTodayDateString() {
-            return new Date().toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
-        }
-
-        function getTomorrowDateString() {
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(today.getDate() + 1); // Tarikh 1 din barano holo
-            return tomorrow.toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
-        }
-        
-        let selectedDate = getTomorrowDateString();
-        let todayDate = getTodayDateString();
-        
-        let allUsersData = { users: [], grouped: {} }; 
-        let currentStatusData = {}; 
-        let currentMonthlyTotals = {}; 
-        
-        let userListenerUnsubscribe = null;
-        let statusListenerUnsubscribe = null;
-        
-        let isCalculatingTotals = false; 
-        let isCarryingOver = false; 
-
-        // DOM Elements
-        const loadingSpinner = document.getElementById('loading-spinner');
-        const appContent = document.getElementById('app-content');
-        const authStatus = document.getElementById('auth-status');
-        
-        const mainControls = document.getElementById('main-controls');
-        const mainRoster = document.getElementById('main-roster');
-        
-        const datePicker = document.getElementById('date-picker');
-        
-        const totalLunchCountEl = document.getElementById('total-lunch-count');
-        const totalDinnerCountEl = document.getElementById('total-dinner-count');
-        const totalMuttonCountEl = document.getElementById('total-mutton-count');
-        const totalEggFishCountEl = document.getElementById('total-egg-fish-count');
-        const totalEggPoultryCountEl = document.getElementById('total-egg-poultry-count');
-        
-        const boysViewBtn = document.getElementById('boys-view-btn');
-        const girlsViewBtn = document.getElementById('girls-view-btn');
-        const genderToggleSection = document.getElementById('gender-toggle-section'); 
-        
-        const adminLoginBtn = document.getElementById('admin-login-btn');
-        const adminModal = document.getElementById('admin-login-modal');
-        const closeModalBtn = document.getElementById('close-modal-btn');
-        const adminLoginForm = document.getElementById('admin-login-form');
-        const adminLoginError = document.getElementById('admin-login-error');
-        const adminSection = document.getElementById('admin-section');
-        const adminLogoutBtn = document.getElementById('admin-logout-btn');
-
-        const staffLoginBtn = document.getElementById('staff-login-btn');
-        const staffModal = document.getElementById('staff-login-modal');
-        const closeStaffModalBtn = document.getElementById('close-staff-modal-btn');
-        const staffLoginForm = document.getElementById('staff-login-form');
-        const staffLoginError = document.getElementById('staff-login-error');
-        const staffLogoutBtn = document.getElementById('staff-logout-btn');
-
-        const addUserForm = document.getElementById('add-user-form');
-        const newUserNameInput = document.getElementById('new-user-name');
-        const newUserBatchSelect = document.getElementById('new-user-batch');
-        const newUserDepositInput = document.getElementById('new-user-deposit');
-        const addUserMessage = document.getElementById('add-user-message');
-
-        const adminDepositForm = document.getElementById('admin-deposit-form');
-        const adminDepositBatch = document.getElementById('admin-deposit-batch'); 
-        const adminDepositName = document.getElementById('admin-deposit-name');   
-        const adminDepositAmount = document.getElementById('admin-deposit-amount');
-        const adminDepositMessage = document.getElementById('admin-deposit-message');
-
-        const userLoginBatch = document.getElementById('user-login-batch'); 
-        const userLoginName = document.getElementById('user-login-name');   
-        const updateSection = document.getElementById('update-section');
-        const dateLockMessage = document.getElementById('date-lock-message');
-        const statusLunchCheckbox = document.getElementById('status-lunch');
-        const statusDinnerCheckbox = document.getElementById('status-dinner');
-        const statusMuttonCheckbox = document.getElementById('status-mutton');
-        const statusEggFishCheckbox = document.getElementById('status-egg-fish');
-        const statusEggPoultryCheckbox = document.getElementById('status-egg-poultry');
-        const saveStatusBtn = document.getElementById('save-status-btn');
-        const saveMessage = document.getElementById('save-message');
-        
-        const rosterDisplayArea = document.getElementById('roster-display-area');
-        const downloadRosterBtn = document.getElementById('download-roster-btn');
-        const rosterTitle = document.getElementById('roster-title'); 
-        const appTitle = document.getElementById('app-title');
-
-        // Helper Functions
-        function getYesterdayDateString(dateString) {
-            const today = new Date(dateString + "T00:00:00"); 
-            const yesterday = new Date(today);
-            yesterday.setDate(today.getDate() - 1);
-            return yesterday.toLocaleDateString('en-CA'); 
-        }
-
-        // --- Core Logic Functions ---
-
-        /**
-         * Renders the status badges for a user in the roster.
-         * Contains logic for Staff (clickable buttons for today) vs. User (static badges).
-         */
-        function formatStatus(statusObject, userId) {
-            if (!statusObject || Object.keys(statusObject).length === 0) {
-                return '<span class="text-xs font-medium text-gray-500">N/A</span>';
-            }
-
-            let mealBadges = '';
-            let additionalBadges = '';
-            
-            const status = statusObject.lunch;
-            const statusD = statusObject.dinner;
-            
-            // Staff can ONLY serve on today's date
-            const canStaffServe = isStaffLoggedIn && selectedDate === todayDate;
-
-            if (canStaffServe) {
-                if (status === 'Lunch') {
-                    mealBadges += `<button onclick="window.serveStatus('${userId}', 'Lunch')" class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 shadow-sm hover:bg-blue-200 transition-all">Serve Lunch</button>`;
-                } else if (status === 'Served-Lunch') {
-                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Lunch</span>';
-                }
-
-                if (statusD === 'Dinner') {
-                    mealBadges += `<button onclick="window.serveStatus('${userId}', 'Dinner')" class="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800 shadow-sm hover:bg-purple-200 transition-all">Serve Dinner</button>`;
-                } else if (statusD === 'Served-Dinner') {
-                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Dinner</span>';
-                }
-
-            } else {
-                 // Regular view for users or non-today dates for staff
-                 if (status === 'Lunch') {
-                    mealBadges += '<span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 shadow-sm">Lunch</span>';
-                } else if (status === 'Served-Lunch') {
-                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Lunch</span>';
-                }
-
-                if (statusD === 'Dinner') {
-                    mealBadges += '<span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800 shadow-sm">Dinner</span>';
-                } else if (statusD === 'Served-Dinner') {
-                     mealBadges += '<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 shadow-sm">Served Dinner</span>';
-                }
-            }
-            
-            // Additional items are always visible
-            if (statusObject.mutton) {
-                additionalBadges += '<span class="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800 shadow-sm">Mutton</span>';
-            }
-            if (statusObject.egg_fish) {
-                additionalBadges += '<span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 shadow-sm">Egg(F)</span>';
-            }
-            if (statusObject.egg_poltry) {
-                additionalBadges += '<span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800 shadow-sm">Egg(P)</span>';
-            }
-
-            if (!mealBadges && !additionalBadges) {
-                 return '<span class="text-xs font-medium text-gray-500">N/A</span>';
-            }
-
-            return `<div class="flex flex-col items-end gap-1.5">
-                        <div class="flex gap-1.5">${mealBadges || ''}</div>
-                        <div class="flex gap-1.5">${additionalBadges || ''}</div>
-                    </div>`;
-        }
-        
-        /**
-         * Function for Staff to mark a meal as 'Served'.
-         * Exposed to window scope to be callable from button onclick.
-         */
-        window.serveStatus = async (userId, statusToServe) => {
-            console.log(`Staff serving ${statusToServe} to ${userId} for ${selectedDate}`);
-            if (!isStaffLoggedIn || !userId || !statusToServe || selectedDate !== todayDate) return;
-
-            try {
-                const statusDocRef = doc(db, statusCollectionPath, selectedDate);
-                const docSnap = await getDoc(statusDocRef);
-                
-                let currentStatuses = {};
-                if (docSnap.exists()) {
-                    currentStatuses = docSnap.data().statuses || {};
-                }
-                
-                let userStatusObject = currentStatuses[userId] || {};
-                
-                if (statusToServe === 'Lunch') {
-                    userStatusObject.lunch = 'Served-Lunch';
-                } else if (statusToServe === 'Dinner') {
-                    userStatusObject.dinner = 'Served-Dinner';
-                }
-
-                // Use setDoc with merge to update only this user's status
-                await setDoc(statusDocRef, { 
-                    statuses: { [userId]: userStatusObject }
-                }, { merge: true });
-
-                const user = allUsersData.users.find(u => u.id === userId);
-                const userName = user ? user.name : 'Unknown';
-
-                // Log this action
-                await addDoc(collection(db, auditLogCollectionPath), {
-                    userId: "STAFF",
-                    userName: "Staff",
-                    updatedForDate: selectedDate,
-                    newStatus: userStatusObject,
-                    timestamp: new Date(),
-                    note: `Staff served ${statusToServe} to ${userName}`
-                });
-
-                console.log("Serve status updated successfully.");
-
-            } catch (error) {
-                console.error("Error serving status: ", error);
-            }
-        }
-        
-        /**
-         * Gets all users filtered by the currently selected gender.
-         */
-        function getFilteredUsers() {
-            const filteredUsers = allUsersData.users.filter(u => u.gender === currentViewGender);
-            
-            const filteredGrouped = {};
-            filteredUsers.forEach(user => {
-                if (!filteredGrouped[user.batch]) {
-                    filteredGrouped[user.batch] = [];
-                }
-                filteredGrouped[user.batch].push(user);
-            });
-            
-            return { filteredUsers, filteredGrouped };
-        }
-        
-        /**
-         * Calculates and displays the 5 main total counts at the top.
-         */
-        function calculateAndDisplayDailyTotals() {
-            let lunchTotal = 0;
-            let dinnerTotal = 0;
-            let muttonTotal = 0;
-            let eggFishTotal = 0;
-            let eggPoultryTotal = 0;
-            
-            const { filteredUsers } = getFilteredUsers(); 
-            const filteredUserIds = filteredUsers.map(u => u.id); 
-            
-            const statuses = Object.entries(currentStatusData); 
-            
-            statuses.forEach(([userId, statusObj]) => {
-                // Only count users of the currently viewed gender
-                if (filteredUserIds.includes(userId)) {
-                    if (statusObj.lunch === 'Lunch' || statusObj.lunch === 'Served-Lunch') lunchTotal++;
-                    if (statusObj.dinner === 'Dinner' || statusObj.dinner === 'Served-Dinner') dinnerTotal++;
-                    if (statusObj.mutton === true) muttonTotal++;
-                    if (statusObj.egg_fish === true) eggFishTotal++;
-                    if (statusObj.egg_poltry === true) eggPoultryTotal++;
-                }
-            });
-            
-            totalLunchCountEl.textContent = lunchTotal;
-            totalDinnerCountEl.textContent = dinnerTotal;
-            totalMuttonCountEl.textContent = muttonTotal;
-            totalEggFishCountEl.textContent = eggFishTotal;
-            totalEggPoultryCountEl.textContent = eggPoultryTotal;
-        }
-        
-        /**
-         * Calculates monthly L/D totals for all users for the selected month.
-         */
-        async function calculateAndDisplayMonthlyTotals(dateString) {
-            if (isCalculatingTotals) return; 
-            isCalculatingTotals = true;
-            console.log("Calculating monthly totals for:", dateString.substring(0, 7));
-
-            const [year, month] = dateString.split('-');
-            const daysInMonth = new Date(year, month, 0).getDate();
-            
-            // Create an array of all date strings for the selected month
-            const dateStrings = [];
-            for (let i = 1; i <= daysInMonth; i++) {
-                const day = String(i).padStart(2, '0');
-                dateStrings.push(`${year}-${month}-${day}`);
-            }
-
-            // Fetch all status docs for the month in parallel
-            const promises = dateStrings.map(date => getDoc(doc(db, statusCollectionPath, date)));
-            
-            let userMonthlyTotals = {}; 
-
-            try {
-                const docSnaps = await Promise.all(promises);
-
-                // Process all docs
-                docSnaps.forEach(docSnap => {
-                    if (docSnap.exists()) {
-                        const statuses = docSnap.data().statuses || {}; 
-                        
-                        for (const [userId, statusObj] of Object.entries(statuses)) {
-                            if (!userMonthlyTotals[userId]) {
-                                userMonthlyTotals[userId] = { Lunch: 0, Dinner: 0 };
-                            }
-                            if (statusObj.lunch === 'Lunch' || statusObj.lunch === 'Served-Lunch') {
-                                userMonthlyTotals[userId].Lunch++;
-                            }
-                            if (statusObj.dinner === 'Dinner' || statusObj.dinner === 'Served-Dinner') {
-                                userMonthlyTotals[userId].Dinner++;
-                            }
-                        }
-                    }
-                });
-
-                currentMonthlyTotals = userMonthlyTotals; 
-                console.log("Monthly totals calculation complete.");
-                
-            } catch (error)
-            {
-                console.error("Error calculating monthly totals: ", error);
-            } finally {
-                isCalculatingTotals = false;
-                // Re-render cards to show the new totals
-                renderBatchCards();
-            }
-        }
-
-        /**
-         * Renders all the batch cards and user rows in the main roster area.
-         */
-        function renderBatchCards() {
-            if (!allUsersData.users.length) { 
-                if (!isAdminLoggedIn) return; // Don't clear if not admin and no users
-            }
-            
-            rosterDisplayArea.innerHTML = ''; 
-            
-            const { filteredGrouped } = getFilteredUsers(); 
-
-            if (Object.keys(filteredGrouped).length === 0) {
-                 rosterDisplayArea.innerHTML = `<p class="text-center text-gray-500 col-span-full">Kono user ekhono add kora hoyni (ei gender-e).</p>`;
-                 return;
-            }
-
-            BATCHES.forEach(batch => {
-                const usersInBatch = filteredGrouped[batch] || []; 
-                
-                const card = document.createElement('div');
-                card.className = 'bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden';
-                
-                let userRows = '';
-                if (usersInBatch.length > 0) {
-                    // Sort users alphabetically within the batch
-                    usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
-                    
-                    usersInBatch.forEach(user => {
-                        const userStatus = currentStatusData[user.id] || {};
-                        const userTotals = currentMonthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
-                        const isCurrentUser = user.id === currentUserDocId;
-
-                        let depositCell = `<td class="px-4 py-3.5 text-sm text-gray-700 font-medium">TK ${user.deposit || 0}</td>`;
-                        
-                        let monthlyTotalCell = `
-                            <td class="px-4 py-3.5 text-sm text-gray-700">
-                                <div id="totals-${user.id}" class="flex gap-2">
-                                    <span class="text-xs font-semibold text-blue-700">L: ${userTotals.Lunch}</span>
-                                    <span class="text-xs font-semibold text-purple-700">D: ${userTotals.Dinner}</span>
-                                </div>
-                            </td>`;
-
-                        userRows += `
-                            <tr class="${isCurrentUser ? 'bg-indigo-50' : 'hover:bg-gray-50'}">
-                                <td class="px-4 py-3.5 text-sm ${isCurrentUser ? 'text-indigo-800 font-bold' : 'text-gray-900 font-semibold'}">${user.name}</td>
-                                ${depositCell}
-                                ${monthlyTotalCell}
-                                <td class="px-4 py-3.5 text-sm text-gray-700 text-right">
-                                    ${formatStatus(userStatus, user.id)}
-                                </td>
-                            </tr>
-                        `;
-                    });
-                } else {
-                    userRows = '<tr><td colspan="4" class="px-5 py-4 text-sm text-gray-500 text-center italic">Ei batch-e kono user nei.</td></tr>';
-                }
-
-                card.innerHTML = `
-                    <div class="bg-gradient-to-r from-indigo-700 to-indigo-500 px-5 py-3">
-                        <h4 class="text-lg font-bold text-white">Batch ${batch}</h4>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Name</th>
-                                    <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Deposit</th>
-                                    <th scope="col" class="px-4 py-2 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
-                                    <th scope="col" class="px-4 py-2 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Status (${selectedDate.slice(5)})</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                ${userRows}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-                rosterDisplayArea.appendChild(card);
-            });
-        }
-
-        /**
-         * Populates a 'name' dropdown based on a 'batch' dropdown selection.
-         */
-        function populateNameDropdown(batchSelectEl, nameSelectEl, selectedValue) {
-            const selectedBatch = batchSelectEl.value;
-            const { filteredGrouped } = getFilteredUsers(); // Already filtered by gender
-            
-            nameSelectEl.innerHTML = ''; 
-            nameSelectEl.disabled = true;
-
-            if (!selectedBatch) {
-                nameSelectEl.add(new Option('-- Batch Select Korun --', ''));
-                return;
-            }
-
-            const usersInBatch = filteredGrouped[selectedBatch] || [];
-            
-            usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
-
-            if (usersInBatch.length === 0) {
-                nameSelectEl.add(new Option(`Ei batch-e user nei (${currentViewGender})`, ''));
-                return;
-            }
-
-            nameSelectEl.add(new Option('-- Naam Select Korun --', ''));
-            usersInBatch.forEach(user => {
-                nameSelectEl.add(new Option(user.name, user.id));
-            });
-            
-            nameSelectEl.disabled = false;
-            
-            if (selectedValue) {
-                nameSelectEl.value = selectedValue;
-            }
-        }
-        
-        /**
-         * Updates all name dropdowns when gender or user data changes.
-         */
-        function updateAllNameDropdowns() {
-            const selectedUserBatch = userLoginBatch.value;
-            const selectedUserName = userLoginName.value;
-            const selectedAdminBatch = adminDepositBatch.value;
-            const selectedAdminName = adminDepositName.value;
-            
-            userLoginName.innerHTML = '<option value="">-- Batch Select Korun --</option>';
-            userLoginName.disabled = true;
-            adminDepositName.innerHTML = '<option value="">-- Batch Select Korun --</option>';
-            adminDepositName.disabled = true;
-            
-            if (selectedUserBatch) {
-                populateNameDropdown(userLoginBatch, userLoginName, selectedUserName);
-            }
-            if (selectedAdminBatch) {
-                populateNameDropdown(adminDepositBatch, adminDepositName, selectedAdminName);
-            }
-        }
-        
-        /**
-         * Main function to refresh the entire dashboard view.
-         */
-        function updateDashboardView() {
-            if (!db) return; 
-            
-            if (!allUsersData.users.length && !isAdminLoggedIn) { 
-                 console.log("Waiting for user data...");
-                 calculateAndDisplayDailyTotals();
-                 return;
-            }
-            
-            console.log("Updating dashboard view...");
-            
-            const { filteredUsers } = getFilteredUsers();
-            
-            rosterTitle.textContent = `Real-time Roster (${currentViewGender}s)`;
-            updateAllNameDropdowns();
-            calculateAndDisplayDailyTotals(); // Must run before renderBatchCards
-            renderBatchCards(); // Renders the main table
-            
-            // Asynchronous updates
-            calculateAndDisplayMonthlyTotals(selectedDate); // Will re-render cards when done
-            runDailyCarryOver(filteredUsers); // Will update statusData and trigger listeners
-            
-            // Update Gender Toggle UI
-            if (currentViewGender === 'Boy') {
-                boysViewBtn.classList.replace('bg-white', 'bg-indigo-600');
-                boysViewBtn.classList.replace('text-indigo-700', 'text-white');
-                girlsViewBtn.classList.replace('bg-indigo-600', 'bg-white');
-                girlsViewBtn.classList.replace('text-white', 'text-indigo-700');
-            } else {
-                girlsViewBtn.classList.replace('bg-white', 'bg-indigo-600');
-                girlsViewBtn.classList.replace('text-indigo-700', 'text-white');
-                boysViewBtn.classList.replace('bg-indigo-600', 'bg-white');
-                boysViewBtn.classList.replace('text-white', 'text-indigo-700');
-            }
-        }
-        
-        /**
-         * Sets up the real-time listener for the users collection.
-         */
-        function setupUserListener() {
-            if (userListenerUnsubscribe) userListenerUnsubscribe(); 
-            
-            const q = query(collection(db, usersCollectionPath)); 
-
-            userListenerUnsubscribe = onSnapshot(q, (snapshot) => {
-                console.log("User data snapshot received.");
-                loadingSpinner.classList.add('hidden');
-                appContent.classList.remove('opacity-0');
-
-                const users = [];
-                snapshot.forEach((doc) => {
-                    users.push({ id: doc.id, ...doc.data() });
-                });
-
-                const groupedUsers = {};
-                users.forEach(user => {
-                    if (!groupedUsers[user.batch]) {
-                        groupedUsers[user.batch] = [];
-                    }
-                    groupedUsers[user.batch].push(user);
-                });
-                
-                allUsersData = { users, grouped: groupedUsers };
-                
-                updateDashboardView(); // Refresh view with new user data
-
-            }, (error) => {
-                console.error("Error fetching roster users: ", error);
-                rosterDisplayArea.innerHTML = `<p class="text-center text-red-600 col-span-full">User list load korte error hocche.</p>`;
-                loadingSpinner.classList.add('hidden');
-                appContent.classList.remove('opacity-0'); 
-            });
-        }
-        
-        /**
-         * Sets up the real-time listener for a specific date's status document.
-         */
-        function setupStatusListener(dateString) {
-            if (statusListenerUnsubscribe) statusListenerUnsubscribe(); // Stop old listener
-
-            const statusDocRef = doc(db, statusCollectionPath, dateString);
-
-            statusListenerUnsubscribe = onSnapshot(statusDocRef, (docSnap) => {
-                console.log(`Status data snapshot received for ${dateString}.`);
-                if (docSnap.exists()) {
-                    currentStatusData = docSnap.data().statuses || {};
-                } else {
-                    currentStatusData = {};
-                }
-                
-                // Refresh the whole view to show new totals and statuses
-                updateDashboardView(); 
-                
-                // Also update the checkboxes if a user is logged in
-                if (currentUserDocId) {
-                    updateCheckboxesForCurrentUser();
-                }
-
-            }, (error) => {
-                console.error(`Error fetching status for ${dateString}: `, error);
-                rosterDisplayArea.innerHTML = `<p class="text-center text-red-600 col-span-full">Status load korte error hocche.</p>`;
-            });
-        }
-        
-        /**
-         * Updates the user update panel (checkboxes) based on current status and date lock.
-         */
-        function updateCheckboxesForCurrentUser() {
-            if (!currentUserDocId) return;
-
-            const userStatus = currentStatusData[currentUserDocId] || {};
-            
-            // User can ONLY update if the date is in the future (NOT today or past)
-            // Logic changed: User can update ONLY future dates. Not today.
-            const canUserUpdate = selectedDate > todayDate;
-
-            // Show/hide date lock message
-            dateLockMessage.classList.toggle('hidden', canUserUpdate);
-            
-            // Enable/disable the whole update UI
-            const allowUpdate = canUserUpdate && !isStaffLoggedIn;
-            saveStatusBtn.disabled = !allowUpdate;
-            saveStatusBtn.classList.toggle('opacity-50', !allowUpdate);
-            saveStatusBtn.classList.toggle('cursor-not-allowed', !allowUpdate);
-
-            // Check "Served" status. If served, user cannot change it.
-            const hasServedLunch = userStatus.lunch === 'Served-Lunch';
-            statusLunchCheckbox.checked = userStatus.lunch === 'Lunch' || hasServedLunch;
-            statusLunchCheckbox.disabled = hasServedLunch || !allowUpdate;
-
-            const hasServedDinner = userStatus.dinner === 'Served-Dinner';
-            statusDinnerCheckbox.checked = userStatus.dinner === 'Dinner' || hasServedDinner;
-            statusDinnerCheckbox.disabled = hasServedDinner || !allowUpdate;
-            
-            // Set additional item checkboxes
-            statusMuttonCheckbox.checked = userStatus.mutton === true;
-            statusEggFishCheckbox.checked = userStatus.egg_fish === true;
-            statusEggPoultryCheckbox.checked = userStatus.egg_poltry === true;
-            
-            // Disable additional items if update is not allowed
-            statusMuttonCheckbox.disabled = !allowUpdate;
-            statusEggFishCheckbox.disabled = !allowUpdate;
-            statusEggPoultryCheckbox.disabled = !allowUpdate;
-        }
-
-        /**
-         * Automatically carries over status from yesterday for users who haven't updated.
-         */
-        async function runDailyCarryOver(filteredUsers) {
-            // Only run for today or future dates
-            if (isCarryingOver || !filteredUsers.length || selectedDate < todayDate) {
-                isCarryingOver = false;
-                return;
-            }
-            isCarryingOver = true;
-            
-            console.log("Running daily carry-over check...");
-
-            // Find users of the current gender who are missing a status for the selected date
-            const usersMissingStatus = filteredUsers.filter(u => !currentStatusData[u.id]);
-            
-            if (usersMissingStatus.length === 0) {
-                console.log("All visible users have status. No carry-over needed.");
-                isCarryingOver = false;
-                return;
-            }
-            
-            console.log(`${usersMissingStatus.length} users missing status. Fetching yesterday's data...`);
-
-            try {
-                const yesterdayDateString = getYesterdayDateString(selectedDate);
-                const yesterdayStatusDocRef = doc(db, statusCollectionPath, yesterdayDateString);
-                const docSnap = await getDoc(yesterdayStatusDocRef);
-
-                let yesterdayStatuses = {};
-                if (docSnap.exists()) {
-                    yesterdayStatuses = docSnap.data().statuses || {};
-                } else {
-                    console.log("Yesterday's status doc does not exist. Cannot carry over.");
-                    isCarryingOver = false;
-                    return;
-                }
-                
-                const updatesToMerge = {};
-                const auditLogPromises = [];
-                
-                usersMissingStatus.forEach(user => {
-                    const yesterdayUserStatus = yesterdayStatuses[user.id] || {};
-                    
-                    // Only carry over if there *was* a status yesterday
-                    if (Object.keys(yesterdayUserStatus).length > 0) {
-                        const carriedOverStatus = { ...yesterdayUserStatus }; 
-                        
-                        // Reset "Served" status back to "On"
-                        if (carriedOverStatus.lunch === 'Served-Lunch') carriedOverStatus.lunch = 'Lunch';
-                        if (carriedOverStatus.dinner === 'Served-Dinner') carriedOverStatus.dinner = 'Dinner';
-
-                        updatesToMerge[user.id] = carriedOverStatus;
-                        
-                        // Log this automatic action
-                        auditLogPromises.push(addDoc(collection(db, auditLogCollectionPath), {
-                            userId: user.id,
-                            userName: user.name,
-                            updatedForDate: selectedDate,
-                            newStatus: carriedOverStatus,
-                            timestamp: new Date(),
-                            note: "Automatic carry-over from yesterday"
-                        }));
-                    }
-                });
-
-                if (Object.keys(updatesToMerge).length > 0) {
-                    console.log("Applying carry-over for users:", Object.keys(updatesToMerge));
-                    
-                    // Merge these updates into today's status document
-                    const todayStatusDocRef = doc(db, statusCollectionPath, selectedDate);
-                    await setDoc(todayStatusDocRef, {
-                        statuses: updatesToMerge
-                    }, { merge: true });
-                    
-                    // Wait for all logs to be written
-                    await Promise.all(auditLogPromises);
-                    
-                } else {
-                    console.log("No users had any status yesterday to carry over.");
-                }
-
-            } catch (error) {
-                console.error("Error during status carry-over: ", error);
-            } finally {
-                isCarryingOver = false;
-            }
-        }
-
-        // --- Event Handlers ---
-
-        function handleDateChange(e) {
-            selectedDate = e.target.value;
-            console.log("Date changed to:", selectedDate);
-            
-            currentStatusData = {}; // Clear old data
-            currentMonthlyTotals = {}; // Clear old totals
-            
-            if (statusListenerUnsubscribe) statusListenerUnsubscribe(); // Stop old listener
-
-            // Start new listener for the new date
-            setupStatusListener(selectedDate);
-            
-            // Refresh UI (will be partial, new data will trigger full render)
-            updateDashboardView();
-            updateCheckboxesForCurrentUser();
-        }
-
-        function handleGenderChange(newGender) {
-            if (currentViewGender === newGender) return; 
-            
-            console.log("Gender changed to:", newGender);
-            currentViewGender = newGender;
-            
-            // Reset user login
-            userLoginBatch.value = '';
-            userLoginName.value = '';
-            userLoginName.disabled = true;
-            currentUserDocId = null;
-            isLoggedIn = false;
-            updateSection.classList.add('hidden');
-            
-            // Refresh entire view for new gender
-            updateDashboardView();
-        }
-
-        function handleAuth() {
-            try {
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        // User is signed in (anonymously)
-                        console.log("User is signed in:", user.uid);
-                        userId = user.uid; 
-                        authStatus.textContent = `Connected`;
-                        authStatus.classList.remove('bg-red-200', 'text-red-800');
-                        authStatus.classList.add('bg-green-200', 'text-green-800');
-                        
-                        // Start data listeners
-                        setupUserListener();
-                        setupStatusListener(selectedDate);
-
-                    } else {
-                        // User is signed out, attempt to sign in
-                        console.log("User is signed out. Signing in anonymously...");
-                        authStatus.textContent = "Connecting...";
-                        authStatus.classList.remove('bg-green-200', 'text-green-800');
-                        authStatus.classList.add('bg-red-200', 'text-red-800');
-                        
-                        try {
-                            await signInAnonymously(auth);
-                            // Listener will pick up the new auth state
-                        } catch (authError) {
-                            console.error("Anonymous Authentication Error:", authError);
-                            authStatus.textContent = "Authentication Failed";
-                            loadingSpinner.classList.add('hidden'); 
-                            appContent.classList.remove('opacity-0'); 
-
-                            // Check for the specific config error
-                            if (authError.code === 'auth/configuration-not-found') {
-                                const errorHtml = `
-                                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg max-w-3xl mx-auto mt-10" role="alert">
-                                  <strong class="font-bold">Firebase Error (auth/configuration-not-found)</strong>
-                                  <span class="block sm:inline">Authentication failed. Ei error-er mane hocche, 'Anonymous' sign-in method-ti apnar Firebase project-e enable kora hoyni.</span>
-                                  <p class="font-bold mt-4">Kivabe Thik Korben:</p>
-                                  <ol class="list-decimal list-inside">
-                                      <li>Apnar Firebase Project-e ('new-meal-28d9e') jaan.</li>
-                                      <li><b>Build</b> -> <b>Authentication</b>-e click korun.</li>
-                                      <li><b>Sign-in method</b> tab-e click korun.</li>
-                                      <li>List theke <b>Anonymous</b>-e click korun.</li>
-                                      <li>Switch-ti <b>Enable</b> korun ebong <b>Save</b> korun.</li>
-                                  </ol>
-                                  <p class="mt-2">Page-ti reload korun ei change korar por.</p>
-                                </div>`;
-                                appContent.insertAdjacentHTML('afterbegin', errorHtml);
-                            }
-                        }
-                    }
-                });
-            } catch (e) {
-                console.error("Auth setup error:", e);
-                authStatus.textContent = "Auth Error";
-            }
-        }
-        
-        // --- Setup Event Listeners ---
-        
-        // Main controls
-        datePicker.addEventListener('change', handleDateChange);
-        boysViewBtn.addEventListener('click', () => handleGenderChange('Boy'));
-        girlsViewBtn.addEventListener('click', () => handleGenderChange('Girl'));
-        
-        // Admin Login
-        adminLoginBtn.addEventListener('click', () => adminModal.classList.remove('hidden'));
-        closeModalBtn.addEventListener('click', () => {
-            adminModal.classList.add('hidden');
-            adminLoginError.classList.add('hidden');
-            adminLoginForm.reset();
-        });
-
-        adminLoginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const id = e.target.adminId.value;
-            const pass = e.target.adminPass.value;
-
-            if (id === 'admin' && pass === 'admin123') {
-                isAdminLoggedIn = true;
-                adminSection.classList.remove('hidden');
-                adminModal.classList.add('hidden');
-                adminLoginError.classList.add('hidden');
-                adminLoginForm.reset();
-            } else {
-                adminLoginError.classList.remove('hidden');
-            }
-        });
-
-        adminLogoutBtn.addEventListener('click', () => {
-            isAdminLoggedIn = false;
-            adminSection.classList.add('hidden');
-        });
-        
-        // Staff Login
-        staffLoginBtn.addEventListener('click', () => staffModal.classList.remove('hidden'));
-        
-        closeStaffModalBtn.addEventListener('click', () => {
-            staffModal.classList.add('hidden');
-            staffLoginError.classList.add('hidden');
-            staffLoginForm.reset();
-        });
-
-        staffLoginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const id = e.target.staffId.value;
-            const pass = e.target.staffPass.value;
-
-            if (id === 'staff' && pass === 'staff123') {
-                isStaffLoggedIn = true;
-                staffModal.classList.add('hidden');
-                staffLoginError.classList.add('hidden');
-                staffLoginForm.reset();
-                
-                // Change UI to Staff Mode
-                adminLoginBtn.classList.add('hidden');
-                staffLoginBtn.classList.add('hidden');
-                staffLogoutBtn.classList.remove('hidden');
-                mainControls.classList.add('hidden'); // Hide left control panel
-                genderToggleSection.classList.add('md:col-span-3'); // Make gender toggle span full
-                mainRoster.classList.remove('md:col-span-2');
-                mainRoster.classList.add('md:col-span-3'); // Make roster span full
-                
-                updateCheckboxesForCurrentUser(); // Disable user update panel
-                renderBatchCards(); // Re-render cards to show 'Serve' buttons
-                
-            } else {
-                staffLoginError.classList.remove('hidden');
-            }
-        });
-
-        staffLogoutBtn.addEventListener('click', () => {
-            isStaffLoggedIn = false;
-            
-            // Revert UI to normal mode
-            adminLoginBtn.classList.remove('hidden');
-            staffLoginBtn.classList.remove('hidden');
-            staffLogoutBtn.add('hidden');
-            mainControls.classList.remove('hidden'); // Show left panel
-            genderToggleSection.classList.remove('md:col-span-3');
-            mainRoster.classList.remove('md:col-span-3');
-            mainRoster.classList.add('md:col-span-2'); // Roster back to 2/3
-            
-            updateCheckboxesForCurrentUser(); // Re-enable user update panel if needed
-            renderBatchCards(); // Re-render cards to hide 'Serve' buttons
-        });
-
-        // Admin: Add User Form
-        addUserForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!isAdminLoggedIn) return; 
-            
-            const name = newUserNameInput.value.trim();
-            const batch = newUserBatchSelect.value;
-            const deposit = Number(newUserDepositInput.value) || 0;
-            const gender = document.querySelector('input[name="new-user-gender"]:checked').value; 
-
-            if (name && batch && gender && userId) { 
-                try {
-                    await addDoc(collection(db, usersCollectionPath), {
-                        name: name,
-                        batch: batch,
-                        deposit: deposit,
-                        gender: gender 
-                    });
-                    
-                    addUserMessage.textContent = 'User successsfully add kora hoyeche!';
-                    addUserMessage.className = 'text-sm text-green-600 mt-2';
-                    addUserMessage.classList.remove('hidden');
-                    addUserForm.reset();
-                    
-                } catch (error) {
-                    console.error("Error adding user: ", error);
-                    addUserMessage.textContent = 'Error: User add kora jayni.';
-                    addUserMessage.className = 'text-sm text-red-600 mt-2';
-                    addUserMessage.classList.remove('hidden');
-                }
-                setTimeout(() => addUserMessage.classList.add('hidden'), 3000);
-            }
-        });
-        
-        // Admin: Update Deposit Form
-        adminDepositBatch.addEventListener('change', (e) => {
-            populateNameDropdown(adminDepositBatch, adminDepositName);
-            adminDepositName.value = ''; 
-            adminDepositAmount.value = 0; 
-        });
-        
-        adminDepositName.addEventListener('change', (e) => {
-            const selectedUserId = e.target.value;
-            const selectedBatch = adminDepositBatch.value;
-            
-            if (selectedUserId && selectedBatch) {
-                const user = allUsersData.grouped[selectedBatch]?.find(u => u.id === selectedUserId);
-                if (user) {
-                    adminDepositAmount.value = user.deposit || 0;
-                }
-            } else {
-                adminDepositAmount.value = 0;
-            }
-        });
-
-        adminDepositForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!isAdminLoggedIn) return;
-
-            const userIdToUpdate = adminDepositName.value; 
-            const newDeposit = Number(adminDepositAmount.value);
-
-            if (!userIdToUpdate) {
-                adminDepositMessage.textContent = 'Please ekjon user select korun.';
-                adminDepositMessage.className = 'text-sm text-red-600 mt-2';
-                adminDepositMessage.classList.remove('hidden');
-                setTimeout(() => adminDepositMessage.classList.add('hidden'), 3000);
-                return;
-            }
-
-            try {
-                const userDocRef = doc(db, usersCollectionPath, userIdToUpdate);
-                await updateDoc(userDocRef, {
-                    deposit: newDeposit
-                });
-                
-                adminDepositMessage.textContent = 'Deposit successsfully update hoyeche!';
-                adminDepositMessage.className = 'text-sm text-green-600 mt-2';
-                adminDepositMessage.classList.remove('hidden');
-                
-                adminDepositForm.reset();
-                adminDepositName.innerHTML = '<option value="">-- Batch Select Korun --</option>';
-                adminDepositName.disabled = true;
-
-            } catch (error) {
-                console.error("Error updating deposit: ", error);
-                adminDepositMessage.textContent = 'Error: Deposit update hoyni.';
-                adminDepositMessage.className = 'text-sm text-red-600 mt-2';
-                adminDepositMessage.classList.remove('hidden');
-            }
-            setTimeout(() => adminDepositMessage.classList.add('hidden'), 3000);
-        });
-
-        // User Login Dropdowns
-        userLoginBatch.addEventListener('change', (e) => {
-            populateNameDropdown(userLoginBatch, userLoginName);
-            
-            // Reset login state
-            userLoginName.value = '';
-            isLoggedIn = false;
-            currentUserDocId = null;
-            updateSection.classList.add('hidden');
-            saveMessage.classList.add('hidden');
-            renderBatchCards(); // Re-render to remove highlight
-        });
-
-        userLoginName.addEventListener('change', async (e) => { 
-            const docId = e.target.value;
-
-            if (docId) {
-                isLoggedIn = true;
-                currentUserDocId = docId;
-                
-                updateCheckboxesForCurrentUser(); // Check date lock, set checkboxes
-                
-                updateSection.classList.remove('hidden');
-                saveMessage.classList.add('hidden');
-                renderBatchCards(); // Re-render to add highlight
-                
-            } else {
-                isLoggedIn = false;
-                currentUserDocId = null;
-                updateSection.classList.add('hidden');
-                saveMessage.classList.add('hidden');
-                renderBatchCards(); // Re-render to remove highlight
-            }
-        });
-
-        // User: Save Status Button
-        saveStatusBtn.addEventListener('click', async () => {
-            if (!isLoggedIn || !currentUserDocId || !userId || selectedDate <= todayDate) return;
-
-            const oldStatus = currentStatusData[currentUserDocId] || {};
-            const newStatus = { ...oldStatus }; // Start with old status
-            
-            // Only update fields user can control. Do not reset "served" status.
-            newStatus.lunch = statusLunchCheckbox.checked ? (oldStatus.lunch === 'Served-Lunch' ? 'Served-Lunch' : 'Lunch') : null;
-            newStatus.dinner = statusDinnerCheckbox.checked ? (oldStatus.dinner === 'Served-Dinner' ? 'Served-Dinner' : 'Dinner') : null;
-            
-            newStatus.mutton = statusMuttonCheckbox.checked;
-            newStatus.egg_fish = statusEggFishCheckbox.checked;
-            newStatus.egg_poltry = statusEggPoultryCheckbox.checked;
-
-            try {
-                // Merge this update into the date's status doc
-                const statusDocRef = doc(db, statusCollectionPath, selectedDate);
-                await setDoc(statusDocRef, { 
-                    statuses: { [currentUserDocId]: newStatus }
-                }, { merge: true });
-                
-                const user = allUsersData.users.find(u => u.id === currentUserDocId);
-                const userName = user ? user.name : 'Unknown';
-
-                // Log this action
-                await addDoc(collection(db, auditLogCollectionPath), {
-                    userId: currentUserDocId,
-                    userName: userName,
-                    updatedForDate: selectedDate,
-                    newStatus: newStatus,
-                    timestamp: new Date(),
-                    note: "Manual user update"
-                });
-                
-                saveMessage.textContent = 'Status successsfully update hoyeche!';
-                saveMessage.className = 'text-sm text-green-600 mt-2';
-                saveMessage.classList.remove('hidden');
-
-            } catch (error) {
-                console.error("Error updating status: ", error);
-                saveMessage.textContent = 'Error: Status update hoyni.';
-                saveMessage.className = 'text-sm text-red-600 mt-2';
-                saveMessage.classList.remove('hidden');
-            }
-            setTimeout(() => saveMessage.classList.add('hidden'), 3000);
-        });
-        
-        /**
-         * Helper for CSV to get totals for the summary.
-         */
-        function getDailyTotalsForCSV(statusData, filteredUserIds) {
-            let lunch = 0, dinner = 0, mutton = 0, egg_fish = 0, egg_poltry = 0;
-            
-            Object.entries(statusData).forEach(([userId, statusObj]) => {
-                if (filteredUserIds.includes(userId)) {
-                    if (statusObj.lunch === 'Lunch' || statusObj.lunch === 'Served-Lunch') lunch++;
-                    if (statusObj.dinner === 'Dinner' || statusObj.dinner === 'Served-Dinner') dinner++;
-                    if (statusObj.mutton === true) mutton++;
-                    if (statusObj.egg_fish === true) egg_fish++;
-                    if (statusObj.egg_poltry === true) egg_poltry++;
-                }
-            });
-            return { lunch, dinner, mutton, egg_fish, egg_poltry };
-        }
-
-        // Download CSV Button
-        downloadRosterBtn.addEventListener('click', async () => {
-            if (!db || !userId) { return; }
-
-            downloadRosterBtn.textContent = "Generating...";
-            downloadRosterBtn.disabled = true;
-
-            const header = "Name,Deposit,Lunch,Dinner,Mutton,Egg (Fish),Egg (Poultry),Monthly Lunch,Monthly Dinner\n";
-            let csvContent = "";
-            
-            try {
-                const { filteredUsers, filteredGrouped } = getFilteredUsers(); 
-                const dateStatuses = currentStatusData;
-                
-                // Ensure monthly totals are calculated if not already
-                if (Object.keys(currentMonthlyTotals).length === 0) {
-                    await calculateAndDisplayMonthlyTotals(selectedDate);
-                }
-                const monthlyTotals = currentMonthlyTotals;
-
-                // Loop through batches in order
-                BATCHES.forEach(batch => {
-                    const usersInBatch = filteredGrouped[batch] || [];
-                    if (usersInBatch.length > 0) {
-                        
-                        csvContent += `Batch ${batch}\n`;
-                        csvContent += header;
-                        
-                        // Sort users by name within batch
-                        usersInBatch.sort((a, b) => a.name.localeCompare(b.name));
-
-                        usersInBatch.forEach(user => {
-                            const userStatus = dateStatuses[user.id] || {};
-                            const totals = monthlyTotals[user.id] || { Lunch: 0, Dinner: 0 };
-                            
-                            const lunchText = userStatus.lunch || 'N/A';
-                            const dinnerText = userStatus.dinner || 'N/A';
-                            const muttonText = userStatus.mutton ? 'Yes' : 'No';
-                            const eggFishText = userStatus.egg_fish ? 'Yes' : 'No';
-                            const eggPoultryText = userStatus.egg_poltry ? 'Yes' : 'No';
-                            
-                            csvContent += `"${user.name}",${user.deposit || 0},"${lunchText}","${dinnerText}","${muttonText}","${eggFishText}","${eggPoultryText}",${totals.Lunch},${totals.Dinner}\n`;
-                        });
-                        
-                        csvContent += "\n"; // Add a blank line between batches
-                    }
-                });
-                
-                // Add summary section
-                const dailyTotals = getDailyTotalsForCSV(dateStatuses, filteredUsers.map(u => u.id));
-                
-                csvContent += "\n\n";
-                csvContent += `Summary for ${selectedDate} (${currentViewGender}s)\n`;
-                csvContent += "Item,Total Count\n";
-                csvContent += `Total Lunch,${dailyTotals.lunch}\n`;
-                csvContent += `Total Dinner,${dailyTotals.dinner}\n`;
-                csvContent += `Total Mutton,${dailyTotals.mutton}\n`;
-                csvContent += `Total Egg (Fish),${dailyTotals.egg_fish}\n`;
-                csvContent += `Total Egg (Poultry),${dailyTotals.egg_poltry}\n`;
-
-                // Create and trigger download
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                if (link.download !== undefined) {
-                    const url = URL.createObjectURL(blob);
-                    link.setAttribute("href", url);
-                    link.setAttribute("download", `smc_meal_roster_${currentViewGender.toLowerCase()}_${selectedDate}.csv`);
-                    link.style.visibility = 'hidden';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                }
-            } catch (error) {
-                console.error("Error generating CSV: ", error);
-            } finally {
-                downloadRosterBtn.textContent = "Download Korte Click Korun";
-                downloadRosterBtn.disabled = false;
-            }
-        });
-
-        // --- Initial App Load ---
-        if(db) {
-            datePicker.value = selectedDate; // Set default date to tomorrow
-            handleAuth(); // Start auth process
-        }
-
     </script>
-    
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
+        /* Custom scrollbar for a more premium feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
         }
-        #admin-login-modal, #staff-login-modal {
-            background-color: rgba(0, 0, 0, 0.5);
-            transition: opacity 0.3s ease;
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
         }
-        .spinner {
-            border-top-color: #4f46e5;
-            animation: spin 1s linear infinite;
+        ::-webkit-scrollbar-thumb {
+            background: #c4c4c4;
+            border-radius: 10px;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .roster-grid-container::-webkit-scrollbar {
-            display: none;
-        }
-        .roster-grid-container {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
         }
     </style>
 </head>
+<body class="bg-gray-100 font-sans">
 
-<body class="bg-gray-100 min-h-screen">
+    <!-- App Container -->
+    <div id="app-container">
 
-    <div id="loading-spinner" class="fixed inset-0 flex items-center justify-center bg-white z-50">
-        <div class="spinner w-12 h-12 border-4 border-gray-200 rounded-full"></div>
-    </div>
-
-    <!-- Admin Login Modal -->
-    <div id="admin-login-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm" @click.stop>
-            <div class="flex justify-between items-center border-b pb-3 mb-4">
-                <h3 class="text-xl font-bold text-gray-900">Admin Login</h3>
-                <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600 text-3xl font-bold">&times;</button>
-            </div>
-            <form id="admin-login-form" class="space-y-4">
-                <div>
-                    <label for="adminId" class="block text-sm font-medium text-gray-700">Admin ID</label>
-                    <input type="text" id="adminId" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                </div>
-                <div>
-                    <label for="adminPass" class="block text-sm font-medium text-gray-700">Password</label>
-                    <input type="password" id="adminPass" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                </div>
-                <p id="admin-login-error" class="text-sm text-red-600 hidden">Invalid ID or Password.</p>
-                <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Login</button>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Staff Login Modal -->
-    <div id="staff-login-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
-        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm" @click.stop>
-            <div class="flex justify-between items-center border-b pb-3 mb-4">
-                <h3 class="text-xl font-bold text-gray-900">Staff Login</h3>
-                <button id="close-staff-modal-btn" class="text-gray-400 hover:text-gray-600 text-3xl font-bold">&times;</button>
-            </div>
-            <form id="staff-login-form" class="space-y-4">
-                <div>
-                    <label for="staffId" class="block text-sm font-medium text-gray-700">Staff ID</label>
-                    <input type="text" id="staffId" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                </div>
-                <div>
-                    <label for="staffPass" class="block text-sm font-medium text-gray-700">Password</label>
-                    <input type="password" id="staffPass" value="" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                </div>
-                <p id="staff-login-error" class="text-sm text-red-600 hidden">Invalid ID or Password.</p>
-                <button type="submit" class="w-full bg-teal-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">Login</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Main App Content -->
-    <div id="app-content" class="opacity-0 transition-opacity duration-500">
         <!-- Header -->
-        <header class="bg-white shadow-md border-b border-gray-200">
-            <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+        <header class="bg-white shadow-md sticky top-0 z-40">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between items-center h-16">
-                    <h1 id="app-title" class="text-2xl font-extrabold text-indigo-700">SMC Meal Dashboard</h1>
-                    <div class="flex items-center gap-4">
-                         <div>
-                            <label for="date-picker" class="text-sm font-medium text-gray-700">Select Date:</label>
-                            <input type="date" id="date-picker" class="ml-2 px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                         </div>
-                         <span id="auth-status" class="text-xs font-mono px-2 py-0.5 rounded-md"></span>
-                        <button id="admin-login-btn" class="bg-gray-800 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-gray-900 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 shadow-md">
-                            Admin Login
-                        </button>
-                        <button id="staff-login-btn" class="bg-teal-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-teal-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-md">
-                            Staff Login
-                        </button>
-                        <button id="staff-logout-btn" class="hidden bg-red-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md">
-                            Staff Logout
-                        </button>
+                    <!-- Left: Title -->
+                    <div class="flex items-center">
+                        <h1 class="text-xl sm:text-2xl font-bold text-gray-800">SMC Meal Dashboard</h1>
+                    </div>
+                    <!-- Right: Controls -->
+                    <div class="flex items-center space-x-2 sm:space-x-3">
+                        <input type="date" id="date-picker" class="border-gray-300 rounded-lg shadow-sm text-sm sm:text-base focus:border-blue-500 focus:ring-blue-500">
+                        <button id="history-btn" class="bg-purple-600 text-white px-3 py-2 text-sm font-medium rounded-lg hover:bg-purple-700">History</button>
+                        <button id="admin-login-btn" class="hidden sm:inline-block bg-gray-700 text-white px-3 py-2 text-sm font-medium rounded-lg hover:bg-gray-800">Admin Login</button>
+                        <button id="staff-login-btn" class="bg-blue-600 text-white px-3 py-2 text-sm font-medium rounded-lg hover:bg-blue-700">Staff Login</button>
+                        <button id="staff-logout-btn" class="hidden bg-red-600 text-white px-3 py-2 text-sm font-medium rounded-lg hover:bg-red-700">Staff Logout</button>
                     </div>
                 </div>
             </div>
         </header>
 
-        <!-- Gender Toggle -->
-        <div id="gender-toggle-section" class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl mt-6">
-            <div class="flex items-center p-1 bg-indigo-100 rounded-lg max-w-xs">
-                <button id="boys-view-btn" class="flex-1 w-full px-4 py-2 rounded-md font-semibold text-sm bg-indigo-600 text-white shadow focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
+        <!-- Gender Toggle Bar -->
+        <div class="flex justify-center my-4 sm:my-6 px-4">
+            <div class="flex rounded-full bg-gray-200 p-1 shadow-inner">
+                <button id="gender-toggle-boy" class="gender-toggle-btn bg-blue-600 text-white py-2 px-6 sm:px-10 rounded-full transition-colors duration-300 ease-in-out">
                     Boys
                 </button>
-                <button id="girls-view-btn" class="flex-1 w-full px-4 py-2 rounded-md font-semibold text-sm bg-white text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
+                <button id="gender-toggle-girl" class="gender-toggle-btn text-gray-600 py-2 px-6 sm:px-10 rounded-full transition-colors duration-300 ease-in-out">
                     Girls
                 </button>
             </div>
         </div>
 
-        <!-- Main Grid Layout -->
-        <main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8 pt-4">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
-                
-                <!-- Left Control Column -->
-                <div id="main-controls" class="md:col-span-1 space-y-6">
+        <!-- Main Content Grid -->
+        <main class="container mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-                    <!-- Admin Panel (Hidden by default) -->
-                    <div id="admin-section" class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 hidden">
-                        <div class="flex justify-between items-center border-b border-gray-200 pb-3 mb-4">
-                            <h3 class="text-xl font-bold text-gray-900">Admin Panel</h3>
-                            <button id="admin-logout-btn" class="text-sm text-red-600 hover:text-red-800 font-medium">Logout</button>
-                        </div>
-                        
-                        <!-- Add User Sub-section -->
-                        <div class="border-b border-gray-200 pb-5">
-                            <h4 class="text-md font-semibold text-gray-800 mb-3">Notun User Jog Korun</h4>
-                            <form id="add-user-form" class="space-y-4">
+                <!-- Left Column (Sticky Control Panel) -->
+                <aside id="left-column" class="lg:col-span-1 lg:sticky lg:top-20 h-max">
+                    <div class="space-y-6">
+                        <!-- User Login & Update Panel -->
+                        <div class="bg-white p-5 rounded-lg shadow-md">
+                            <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">User Login & Update</h2>
+                            <div class="space-y-4">
                                 <div>
-                                    <label for="new-user-name" class="block text-sm font-medium text-gray-700">User Name</label>
-                                    <input type="text" id="new-user-name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                </div>
-                                <div>
-                                    <label for="new-user-batch" class="block text-sm font-medium text-gray-700">Batch</label>
-                                    <select id="new-user-batch" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                        <option value="">Batch Select Korun</option>
-                                        <option value="10">10</option>
-                                        <option value="11">11</option>
-                                        <option value="12">12</option>
-                                        <option value="13">13</option>
-                                        <option value="14">14</option>
+                                    <label for="user-batch-select" class="block text-sm font-medium text-gray-700">Batch</label>
+                                    <select id="user-batch-select" class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="">Select Batch</option>
+                                        <option value="10">Batch 10</option>
+                                        <option value="11">Batch 11</option>
+                                        <option value="12">Batch 12</option>
+                                        <option value="13">Batch 13</option>
+                                        <option value="14">Batch 14</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">Gender</label>
-                                    <fieldset class="mt-2 flex gap-6">
-                                        <div class="flex items-center">
-                                            <input id="gender-boy" name="new-user-gender" type="radio" value="Boy" class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600" checked>
-                                            <label for="gender-boy" class="ml-2 block text-sm font-medium text-gray-900">Boy</label>
-                                        </div>
-                                        <div class="flex items-center">
-                                            <input id="gender-girl" name="new-user-gender" type="radio" value="Girl" class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600">
-                                            <label for="gender-girl" class="ml-2 block text-sm font-medium text-gray-900">Girl</label>
-                                        </div>
-                                    </fieldset>
+                                    <label for="user-name-select" class="block text-sm font-medium text-gray-700">Name</label>
+                                    <select id="user-name-select" class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500" disabled>
+                                        <option value="">Select Name</option>
+                                    </select>
                                 </div>
-                                <div>
-                                    <label for="new-user-deposit" class="block text-sm font-medium text-gray-700">Initial Deposit (TK)</label>
-                                    <input type="number" id="new-user-deposit" value="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+
+                            <!-- User Update Section (Hidden by default) -->
+                            <div id="user-update-panel" class="hidden mt-6 pt-6 border-t">
+                                <h3 class="text-md font-semibold text-gray-800 mb-4" id="user-update-heading">Update Status for...</h3>
+                                <!-- Shudhu agami kaler (next date) roster update kora jabe. -->
+                                <div id="user-date-lock-msg" class="hidden p-3 bg-yellow-100 text-yellow-800 rounded-lg text-sm mb-4">
+                                    Shudhu agami kaler (next date) roster update kora jabe.
                                 </div>
-                                <button type="submit" class="w-full bg-emerald-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                                    User Jog Korun
+                                <div class="space-y-3">
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="update-lunch" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <span class="ml-2 text-gray-700">Lunch</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="update-dinner" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <span class="ml-2 text-gray-700">Dinner</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="update-mutton" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                                        <span class="ml-2 text-gray-700">Mutton</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="update-egg-fish" class="h-4 w-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500">
+                                        <span class="ml-2 text-gray-700">Egg (Fish)</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="update-egg-poltry" class="h-4 w-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500">
+                                        <span class="ml-2 text-gray-700">Egg (Poultry)</span>
+                                    </label>
+                                </div>
+                                <button id="user-update-save-btn" class="mt-5 w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400">
+                                    Update Save Korun
                                 </button>
-                                <p id="add-user-message" class="text-sm text-green-600 mt-2 hidden"></p>
-                            </form>
+                            </div>
                         </div>
 
-                        <!-- Update Deposit Sub-section -->
-                        <div class="pt-5">
-                            <h4 class="text-md font-semibold text-gray-800 mb-3">User Deposit Update Korun</h4>
-                            <form id="admin-deposit-form" class="space-y-4">
-                                <div>
-                                    <label for="admin-deposit-batch" class="block text-sm font-medium text-gray-700">Step 1: Batch Select Korun</label>
-                                    <select id="admin-deposit-batch" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                        <option value="">-- Batch Select --</option>
-                                        <option value="10">10</option>
-                                        <option value="11">11</option>
-                                        <option value="12">12</option>
-                                        <option value="13">13</option>
-                                        <option value="14">14</option>
+                        <!-- Admin Panel (Hidden by default) -->
+                        <div id="admin-panel" class="hidden space-y-6">
+                            <!-- Add User Form -->
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">Admin: Add User</h2>
+                                <form id="admin-add-user-form" class="space-y-4">
+                                    <input type="text" id="admin-add-name" placeholder="Name" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                    <select id="admin-add-batch" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                        <option value="">Select Batch</option>
+                                        <option value="10">Batch 10</option>
+                                        <option value="11">Batch 11</option>
+                                        <option value="12">Batch 12</option>
+                                        <option value="13">Batch 13</option>
+                                        <option value="14">Batch 14</option>
                                     </select>
-                                </div>
-                                <div>
-                                    <label for="admin-deposit-name" class="block text-sm font-medium text-gray-700">Step 2: User Select Korun</label>
-                                    <select id="admin-deposit-name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100" disabled>
-                                        <option value="">-- Batch Select Korun --</option>
+                                    <select id="admin-add-gender" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                        <option value="">Select Gender</option>
+                                        <option value="Boy">Boy</option>
+                                        <option value="Girl">Girl</option>
                                     </select>
-                                </div>
-                                <div>
-                                    <label for="admin-deposit-amount" class="block text-sm font-medium text-gray-700">Notun Deposit Amount (TK)</label>
-                                    <input type="number" id="admin-deposit-amount" value="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                </div>
-                                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                    Deposit Update Korun
-                                </button>
-                                <p id="admin-deposit-message" class="text-sm text-green-600 mt-2 hidden"></p>
-                            </form>
+                                    <input type="number" id="admin-add-deposit" placeholder="Initial Deposit" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                    <button type="submit" class="w-full bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700">Add User</button>
+                                </form>
+                            </div>
+
+                            <!-- Update Deposit Form -->
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">Admin: Update Deposit</h2>
+                                <form id="admin-update-deposit-form" class="space-y-4">
+                                    <select id="admin-update-batch" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                        <option value="">Select Batch</option>
+                                        <option value="10">Batch 10</option>
+                                        <option value="11">Batch 11</option>
+                                        <option value="12">Batch 12</option>
+                                        <option value="13">Batch 13</option>
+                                        <option value="14">Batch 14</option>
+                                    </select>
+                                    <select id="admin-update-name" class="w-full border-gray-300 rounded-lg shadow-sm" required disabled>
+                                        <option value="">Select Name</option>
+                                    </select>
+                                    <input type="number" id="admin-update-deposit" placeholder="New Deposit Amount" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                    <button type="submit" class="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700">Update Deposit</button>
+                                </form>
+                            </div>
                         </div>
                     </div>
+                </aside>
 
-                    <!-- User Login Panel -->
-                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 sticky top-8">
-                        <h3 class="text-xl font-bold mb-4 border-b border-gray-200 pb-3 text-gray-900">User Login & Update</h3>
-                        
-                        <div class="space-y-4">
-                            <div>
-                                <label for="user-login-batch" class="block text-sm font-medium text-gray-700">Step 1: Batch Select Korun</label>
-                                <select id="user-login-batch" class="mt-1 block w-full px-3 py-2.5 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                                    <option value="">-- Batch Select --</option>
-                                    <option value="10">10</option>
-                                    <option value="11">11</option>
-                                    <option value="12">12</option>
-                                    <option value="13">13</option>
-                                    <option value="14">14</option>
-                                </select>
-                            </div>
-    
-                            <div>
-                                <label for="user-login-name" class="block text-sm font-medium text-gray-700">Step 2: Apnar Naam Select Korun</label>
-                                <select id="user-login-name" class="mt-1 block w-full px-3 py-2.5 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100" disabled>
-                                    <option value="">-- Batch Select Korun --</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- User Update Panel (Hidden by default) -->
-                        <div id="update-section" class="mt-6 hidden">
-                            <h4 class="block text-sm font-medium text-gray-700 mb-3">Step 3: Apnar Status Update Korun</h4>
-                            
-                            <!-- Date Lock Message -->
-                            <div id="date-lock-message" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-3 rounded-md mb-4">
-                                <p class="text-sm font-medium">Shudhu agami kaler (ba porer) roster update kora jabe. Ajker ba purono roster update kora jabe na.</p>
-                            </div>
-
-                            <fieldset class="space-y-3">
-                                <div class="relative flex items-start">
-                                    <div class="flex h-6 items-center">
-                                        <input id="status-lunch" name="status-lunch" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    </div>
-                                    <div class="ml-3 text-sm leading-6">
-                                        <label for="status-lunch" class="font-medium text-gray-900">Lunch</label>
-                                    </div>
-                                </div>
-                                <div class="relative flex items-start">
-                                    <div class="flex h-6 items-center">
-                                        <input id="status-dinner" name="status-dinner" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    </div>
-                                    <div class="ml-3 text-sm leading-6">
-                                        <label for="status-dinner" class="font-medium text-gray-900">Dinner</label>
-                                    </div>
-                                </div>
-                                
-                                <hr class="my-2 border-gray-200">
-                                
-                                <div class="relative flex items-start">
-                                    <div class="flex h-6 items-center">
-                                        <input id="status-mutton" name="status-mutton" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-600 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    </div>
-                                    <div class="ml-3 text-sm leading-6">
-                                        <label for="status-mutton" class="font-medium text-gray-900">Additional: Mutton</label>
-                                    </div>
-                                </div>
-                                <div class="relative flex items-start">
-                                    <div class="flex h-6 items-center">
-                                        <input id="status-egg-fish" name="status-egg-fish" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-600 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    </div>
-                                    <div class="ml-3 text-sm leading-6">
-                                        <label for="status-egg-fish" class="font-medium text-gray-900">Additional: Egg (Fish)</label>
-                                    </div>
-                                </div>
-                                <div class="relative flex items-start">
-                                    <div class="flex h-6 items-center">
-                                        <input id="status-egg-poultry" name="status-egg-poultry" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    </div>
-                                    <div class="ml-3 text-sm leading-6">
-                                        <label for="status-egg-poultry" class="font-medium text-gray-900">Additional: Egg (Poultry)</label>
-                                    </div>
-                                </div>
-                            </fieldset>
-                            
-                            <button id="save-status-btn" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mt-5">
-                                Update Save Korun
-                            </button>
-                            <p id="save-message" class="text-sm text-green-600 mt-2 hidden"></p>
-                        </div>
-                    </div>
-
-                </div>
-                
-                <!-- Right Data Column -->
-                <div id="main-roster" class="md:col-span-2 space-y-6">
-                    
+                <!-- Right Column (Data) -->
+                <section id="right-column" class="lg:col-span-3 space-y-6">
                     <!-- Daily Total Cards -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
-                            <h4 class="text-md font-semibold text-blue-800">Total Lunch</h4>
-                            <p id="total-lunch-count" class="text-3xl font-extrabold text-blue-600 text-right">0</p>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-sm font-medium text-gray-500">Total Lunch</h3>
+                            <p id="total-lunch" class="text-3xl font-bold text-gray-900">-</p>
                         </div>
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
-                            <h4 class="text-md font-semibold text-purple-800">Total Dinner</h4>
-                            <p id="total-dinner-count" class="text-3xl font-extrabold text-purple-600 text-right">0</p>
+                        <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-sm font-medium text-gray-500">Total Dinner</h3>
+                            <p id="total-dinner" class="text-3xl font-bold text-gray-900">-</p>
                         </div>
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
-                            <h4 class="text-md font-semibold text-rose-800">Total Mutton</h4>
-                            <p id="total-mutton-count" class="text-3xl font-extrabold text-rose-600 text-right">0</p>
+                        <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-sm font-medium text-gray-500">Total Mutton</h3>
+                            <p id="total-mutton" class="text-3xl font-bold text-gray-900">-</p>
                         </div>
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
-                            <h4 class="text-md font-semibold text-amber-800">Total Egg (Fish)</h4>
-                            <p id="total-egg-fish-count" class="text-3xl font-extrabold text-amber-600 text-right">0</p>
+                        <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-sm font-medium text-gray-500">Total Egg (Fish)</h3>
+                            <p id="total-egg-fish" class="text-3xl font-bold text-gray-900">-</p>
                         </div>
-                        <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col justify-between">
-                            <h4 class="text-md font-semibold text-yellow-800">Total Egg (Poultry)</h4>
-                            <p id="total-egg-poultry-count" class="text-3xl font-extrabold text-yellow-600 text-right">0</p>
+                        <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-sm font-medium text-gray-500">Total Egg (Poultry)</h3>
+                            <p id="total-egg-poltry" class="text-3xl font-bold text-gray-900">-</p>
                         </div>
                     </div>
 
-                    <!-- Roster Header -->
-                    <div class="flex flex-wrap justify-between items-center gap-4 border-b border-gray-300 pb-4">
-                        <h3 id="roster-title" class="text-2xl font-bold text-gray-900">Real-time Roster (Boys)</h3>
-                        <button id="download-roster-btn" class="bg-indigo-600 text-white py-2 px-5 rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md">
-                            Download Korte Click Korun
+                    <!-- Download Button -->
+                    <div class="text-center">
+                        <button id="download-csv-btn" class="bg-gray-800 text-white py-2 px-6 rounded-lg font-medium hover:bg-gray-900">
+                            Download CSV Roster
                         </button>
                     </div>
 
-                    <!-- Roster Batch Cards Area -->
-                    <div id="roster-display-area" class="grid grid-cols-1 lg:grid-cols-2 gap-5 roster-grid-container">
-                        <p class="text-center text-gray-500 col-span-full">Loading users...</p>
+                    <!-- Main Roster - Batch Cards -->
+                    <div id="roster-area" class="space-y-6">
+                        <!-- Batch cards will be dynamically generated here -->
+                        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                            <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 10</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Deposit</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="roster-batch-10" class="bg-white divide-y divide-gray-200">
+                                        <!-- User rows will be inserted here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                            <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 11</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Deposit</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="roster-batch-11" class="bg-white divide-y divide-gray-200"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                            <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 12</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Deposit</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="roster-batch-12" class="bg-white divide-y divide-gray-200"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                            <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 13</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Deposit</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="roster-batch-13" class="bg-white divide-y divide-gray-200"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                            <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 14</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Deposit</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Monthly Totals</th>
+                                            <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="roster-batch-14" class="bg-white divide-y divide-gray-200"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>
 
+                </section>
             </div>
         </main>
     </div>
+
+    <!-- Modals -->
+    <!-- Admin Login Modal -->
+    <div id="admin-login-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+            <h2 class="text-xl font-semibold text-center mb-4">Admin Login</h2>
+            <form id="admin-login-form">
+                <div class="space-y-4">
+                    <input type="text" id="admin-username" placeholder="Username" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                    <input type="password" id="admin-password" placeholder="Password" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                    <p id="admin-login-error" class="text-red-500 text-sm hidden">Invalid credentials.</p>
+                    <button type="submit" class="w-full bg-gray-700 text-white py-2 rounded-lg font-medium hover:bg-gray-800">Login</button>
+                    <button type="button" id="admin-modal-close" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Staff Login Modal -->
+    <div id="staff-login-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+            <h2 class="text-xl font-semibold text-center mb-4">Staff Login</h2>
+            <form id="staff-login-form">
+                <div class="space-y-4">
+                    <input type="text" id="staff-username" placeholder="Username" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                    <input type="password" id="staff-password" placeholder="Password" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                    <p id="staff-login-error" class="text-red-500 text-sm hidden">Invalid credentials.</p>
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Login</button>
+                    <button type="button" id="staff-modal-close" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- NEW: History Download Modal -->
+    <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+            <h2 class="text-xl font-semibold text-center mb-4">Download Historical Roster</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="history-date-picker" class="block text-sm font-medium text-gray-700">Select Date</label>
+                    <input type="date" id="history-date-picker" class="mt-1 w-full border-gray-300 rounded-lg shadow-sm" required>
+                </div>
+                <button id="download-history-csv-btn" class="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-400">
+                    Download CSV
+                </button>
+                <button type="button" id="history-modal-close" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Auth Error Modal -->
+    <div id="auth-error-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-xl font-semibold text-red-600 mb-4">Firebase Configuration Error</h2>
+            <p class="text-gray-700 mb-4">Could not connect to the database. This is likely because <strong>Anonymous Authentication</strong> is not enabled in your Firebase project.</p>
+            <p class="text-gray-700">Please go to your Firebase Console -> Authentication -> Sign-in method -> and enable 'Anonymous' sign-in.</p>
+            <button id="auth-error-close" class="mt-6 w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">I Understand</button>
+        </div>
+    </div>
+
+    <!-- 
+    ================================================================
+    FIREBASE SCRIPT
+    ================================================================
+    -->
+    <script type="module">
+        // 1. Import Firebase services
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {
+            getAuth,
+            signInAnonymously,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            doc,
+            getDoc,
+            setDoc,
+            updateDoc,
+            addDoc,
+            onSnapshot,
+            collection,
+            query,
+            where,
+            getDocs,
+            Timestamp,
+            setLogLevel,
+            documentId // Import documentId for query
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- PLACEHOLDER FIREBASE CONFIG ---
+        // !! REPLACE THIS WITH YOUR OWN FIREBASE PROJECT CONFIGURATION !!
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        // ------------------------------------
+
+        // --- FIRESTORE SECURITY RULE (for your project) ---
+        /*
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            // Allow read/write access if the user is authenticated (even anonymously)
+            match /{document=**} {
+              allow read, write: if request.auth != null;
+            }
+          }
+        }
+        */
+
+        // --- GLOBAL STATE ---
+        let app, auth, db;
+        let currentRole = 'user'; // 'user', 'admin', 'staff'
+        let currentLoggedInUser = null; // { id, ...data }
+        let selectedGender = 'Boy';
+        let selectedDate = '';
+        
+        let allUsers = []; // All users from 'roster-users'
+        let dateStatuses = {}; // Statuses for the selected date { userId: { status } }
+        let monthlyTotals = {}; // { userId: { lunch: 0, dinner: 0 } }
+
+        let unsubscribeDateStatus = null; // Function to detach old listener
+        let unsubscribeUsers = null;
+
+        const BATCHES = ['10', '11', '12', '13', '14'];
+
+        // --- DOM ELEMENTS ---
+        const datePicker = document.getElementById('date-picker');
+        const mainContainer = document.querySelector('main .grid');
+        const leftColumn = document.getElementById('left-column');
+        const rightColumn = document.getElementById('right-column');
+        
+        const adminLoginBtn = document.getElementById('admin-login-btn');
+        const staffLoginBtn = document.getElementById('staff-login-btn');
+        const staffLogoutBtn = document.getElementById('staff-logout-btn');
+        const historyBtn = document.getElementById('history-btn'); // New
+        
+        const genderBtnBoy = document.getElementById('gender-toggle-boy');
+        const genderBtnGirl = document.getElementById('gender-toggle-girl');
+        
+        const userBatchSelect = document.getElementById('user-batch-select');
+        const userNameSelect = document.getElementById('user-name-select');
+        const userUpdatePanel = document.getElementById('user-update-panel');
+        const userUpdateHeading = document.getElementById('user-update-heading');
+        const userDateLockMsg = document.getElementById('user-date-lock-msg');
+        const userUpdateSaveBtn = document.getElementById('user-update-save-btn');
+        const userCheckboxes = {
+            lunch: document.getElementById('update-lunch'),
+            dinner: document.getElementById('update-dinner'),
+            mutton: document.getElementById('update-mutton'),
+            egg_fish: document.getElementById('update-egg-fish'),
+            egg_poltry: document.getElementById('update-egg-poltry')
+        };
+        
+        const adminPanel = document.getElementById('admin-panel');
+        const adminAddUserForm = document.getElementById('admin-add-user-form');
+        const adminUpdateDepositForm = document.getElementById('admin-update-deposit-form');
+        const adminUpdateBatchSelect = document.getElementById('admin-update-batch');
+        const adminUpdateNameSelect = document.getElementById('admin-update-name');
+
+        const downloadCsvBtn = document.getElementById('download-csv-btn');
+
+        // Modals
+        const adminLoginModal = document.getElementById('admin-login-modal');
+        const staffLoginModal = document.getElementById('staff-login-modal');
+        const authErrorModal = document.getElementById('auth-error-modal');
+        const historyModal = document.getElementById('history-modal'); // New
+        const historyDatePicker = document.getElementById('history-date-picker'); // New
+        const downloadHistoryCsvBtn = document.getElementById('download-history-csv-btn'); // New
+        const historyModalClose = document.getElementById('history-modal-close'); // New
+
+
+        // --- HELPER FUNCTIONS ---
+
+        /**
+         * Formats a Date object as "YYYY-MM-DD"
+         * @param {Date} date 
+         * @returns {string}
+         */
+        function getYYYYMMDD(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        /**
+         * Gets tomorrow's date string
+         * @returns {string} "YYYY-MM-DD"
+         */
+        function getTomorrowString() {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return getYYYYMMDD(tomorrow);
+        }
+
+        /**
+         * Gets today's date string
+         * @returns {string} "YYYY-MM-DD"
+         */
+        function getTodayString() {
+            return getYYYYMMDD(new Date());
+        }
+
+        /**
+         * Gets the previous day's date string
+         * @param {string} dateStr "YYYY-MM-DD"
+         * @returns {string} "YYYY-MM-DD"
+         */
+        function getPrevDateString(dateStr) {
+            // Using UTC to avoid timezone issues with date changes
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const date = new Date(Date.UTC(year, month - 1, day));
+            date.setUTCDate(date.getUTCDate() - 1);
+            return date.toISOString().split('T')[0];
+        }
+
+        /**
+         * Logs an action to the 'roster-audit-log' collection
+         * @param {string} userName 
+         * @param {string} action 
+         * @param {object} newStatus 
+         */
+        async function logAudit(userName, action, newStatus = {}, dateToLog = selectedDate) {
+            try {
+                await addDoc(collection(db, "roster-audit-log"), {
+                    userName,
+                    action,
+                    updatedForDate: dateToLog,
+                    newStatus: JSON.stringify(newStatus),
+                    timestamp: Timestamp.now()
+                });
+            } catch (error) {
+                console.error("Error writing audit log: ", error);
+            }
+        }
+        
+        // --- CUSTOM ALERT MODAL (to avoid window.alert) ---
+        
+        /**
+         * Creates a custom alert modal
+         * @param {string} message The message to display
+         * @param {string} [type='info'] 'info' or 'error'
+         */
+        function showCustomAlert(message, type = 'info') {
+            // Remove existing alert
+            const existingAlert = document.getElementById('custom-alert-modal');
+            if (existingAlert) existingAlert.remove();
+            
+            const bgColor = type === 'error' ? 'bg-red-100' : 'bg-blue-100';
+            const borderColor = type === 'error' ? 'border-red-400' : 'border-blue-400';
+            const textColor = type === 'error' ? 'text-red-700' : 'text-blue-700';
+            const buttonColor = type === 'error' ? 'bg-red-600' : 'bg-blue-600';
+            const buttonHoverColor = type === 'error' ? 'hover:bg-red-700' : 'hover:bg-blue-700';
+
+            const modal = document.createElement('div');
+            modal.id = 'custom-alert-modal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm transform transition-all scale-95 opacity-0" role="alert">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <!-- Icon (simple circle for now) -->
+                            <div class="h-6 w-6 ${bgColor} rounded-full flex items-center justify-center border ${borderColor}">
+                                <span class="font-bold ${textColor}">!</span>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-800">${message}</p>
+                        </div>
+                    </div>
+                    <div class="mt-5 text-right">
+                        <button id="custom-alert-close" class="px-4 py-2 text-sm font-medium text-white ${buttonColor} rounded-lg ${buttonHoverColor} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            OK
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Add close listener
+            document.getElementById('custom-alert-close').addEventListener('click', () => {
+                modal.remove();
+            });
+
+            // Animate in
+            setTimeout(() => {
+                const innerModal = modal.querySelector('.bg-white');
+                innerModal.classList.remove('scale-95', 'opacity-0');
+                innerModal.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        // --- INITIALIZATION ---
+        
+        async function initializeAppAndAuth() {
+            try {
+                // Check if firebase config is just placeholders
+                if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                    showCustomAlert("Firebase config deya hoyni. HTML file-ti edit korun ebong apnar project configuration add korun.", "error");
+                    return;
+                }
+                
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                setLogLevel('error'); // Use 'debug' for more verbose logs
+
+                // Sign in anonymously
+                await signInAnonymously(auth);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        console.log("Anonymous user signed in:", user.uid);
+                        // Once auth is ready, set up the app
+                        setupApp();
+                    } else {
+                        console.log("User is signed out.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Init Error:", error);
+                if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
+                    authErrorModal.classList.remove('hidden');
+                } else if (error.code === 'invalid-api-key') {
+                    showCustomAlert("Invalid Firebase API Key. Apnar firebaseConfig object-ti check korun.", "error");
+                }
+            }
+        }
+
+        function setupApp() {
+            // 1. Set default date to TOMORROW
+            selectedDate = getTomorrowString();
+            datePicker.value = selectedDate;
+            historyDatePicker.value = getTodayString(); // Default history to today
+
+            // 2. Add Event Listeners
+            addEventListeners();
+
+            // 3. Start listening to user collection
+            listenToUsers();
+
+            // 4. Fetch data for the default date (this triggers the whole data pipeline)
+            fetchDataForSelectedDate();
+        }
+
+        // --- EVENT LISTENERS ---
+        
+        function addEventListeners() {
+            datePicker.addEventListener('change', handleDateChange);
+            genderBtnBoy.addEventListener('click', () => handleGenderChange('Boy'));
+            genderBtnGirl.addEventListener('click', () => handleGenderChange('Girl'));
+
+            // Modals
+            adminLoginBtn.addEventListener('click', () => adminLoginModal.classList.remove('hidden'));
+            staffLoginBtn.addEventListener('click', () => staffLoginModal.classList.remove('hidden'));
+            historyBtn.addEventListener('click', () => historyModal.classList.remove('hidden')); // New
+            
+            document.getElementById('admin-modal-close').addEventListener('click', () => adminLoginModal.classList.add('hidden'));
+            document.getElementById('staff-modal-close').addEventListener('click', () => staffLoginModal.classList.add('hidden'));
+            historyModalClose.addEventListener('click', () => historyModal.classList.add('hidden')); // New
+            document.getElementById('auth-error-close').addEventListener('click', () => authErrorModal.classList.add('hidden'));
+
+            // Logins
+            document.getElementById('admin-login-form').addEventListener('submit', handleAdminLogin);
+            document.getElementById('staff-login-form').addEventListener('submit', handleStaffLogin);
+            staffLogoutBtn.addEventListener('click', handleStaffLogout);
+
+            // User Panel
+            userBatchSelect.addEventListener('change', populateUserNameDropdown);
+            userNameSelect.addEventListener('change', handleUserSelect);
+            userUpdateSaveBtn.addEventListener('click', handleUserStatusUpdate);
+            
+            // Admin Panel
+            adminAddUserForm.addEventListener('submit', handleAdminAddUser);
+            adminUpdateDepositForm.addEventListener('submit', handleAdminUpdateDeposit);
+            adminUpdateBatchSelect.addEventListener('change', populateAdminNameDropdown);
+
+            // CSV Download
+            downloadCsvBtn.addEventListener('click', handleDownloadCSV);
+            downloadHistoryCsvBtn.addEventListener('click', handleDownloadHistoryCSV); // New
+
+            // Add listeners for dynamic content (serve buttons)
+            // We use event delegation on the roster area
+            document.getElementById('roster-area').addEventListener('click', function(e) {
+                if (e.target && e.target.classList.contains('serve-btn')) {
+                    handleServeMeal(e);
+                }
+            });
+        }
+
+        // --- DATA FETCHING & REAL-TIME LISTENERS ---
+
+        /**
+         * Listens to the 'roster-users' collection for real-time updates
+         */
+        function listenToUsers() {
+            if (unsubscribeUsers) unsubscribeUsers(); // Detach old listener if exists
+
+            const q = query(collection(db, "roster-users"));
+            unsubscribeUsers = onSnapshot(q, (querySnapshot) => {
+                allUsers = [];
+                querySnapshot.forEach((doc) => {
+                    allUsers.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort users by name
+                allUsers.sort((a, b) => a.name.localeCompare(b.name));
+                
+                // Re-populate dropdowns and re-render dashboard
+                populateUserLoginDropdown();
+                populateAdminNameDropdown();
+                renderDashboard(); 
+            }, (error) => {
+                console.error("Error listening to users: ", error);
+            });
+        }
+        
+        /**
+         * Fetches all data (and sets up listeners) for the currently selected date.
+         * This is the main data pipeline trigger.
+         */
+        async function fetchDataForSelectedDate() {
+            console.log(`Fetching data for: ${selectedDate}`);
+            
+            // 1. Detach old date listener
+            if (unsubscribeDateStatus) {
+                unsubscribeDateStatus();
+                unsubscribeDateStatus = null;
+            }
+
+            // Reset local state
+            dateStatuses = {};
+            monthlyTotals = {};
+
+            try {
+                // 2. CRITICAL: Check and carry over statuses from the previous day
+                await checkAndCarryOverStatuses();
+
+                // 3. Listen to the status document for the *new* selected date
+                const dateDocRef = doc(db, "roster-status-by-date", selectedDate);
+                unsubscribeDateStatus = onSnapshot(dateDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        dateStatuses = docSnap.data().statuses || {};
+                    } else {
+                        console.log(`No status doc for ${selectedDate}, creating...`);
+                        // Create an empty doc if it doesn't exist to make carry-over easier next time
+                        setDoc(dateDocRef, { statuses: {} }, { merge: true });
+                        dateStatuses = {};
+                    }
+                    // Re-render the dashboard with new statuses
+                    renderDashboard();
+                }, (error) => {
+                    console.error("Error listening to date status: ", error);
+                });
+
+                // 4. Fetch monthly totals for all users
+                await fetchMonthlyTotals();
+
+                // 5. Final render (in case monthly totals came after status render)
+                renderDashboard();
+
+            } catch (error) {
+                console.error("Error fetching data for date: ", error);
+            }
+        }
+
+        /**
+         * CRITICAL LOGIC: Checks for missing statuses and carries them over from the previous day.
+         * NEW: Skips carry-over on the 1st of the month.
+         */
+        async function checkAndCarryOverStatuses() {
+            // NEW: Check if it's the 1st of the month
+            const [year, month, day] = selectedDate.split('-');
+            if (day === '01') {
+                console.log("1st of month: Skipping status carry-over.");
+                return; // Don't carry over on the 1st
+            }
+
+            const prevDate = getPrevDateString(selectedDate);
+            console.log(`Checking carry-over from: ${prevDate}`);
+
+            try {
+                const prevDocRef = doc(db, "roster-status-by-date", prevDate);
+                const currentDocRef = doc(db, "roster-status-by-date", selectedDate);
+
+                const [prevDoc, currentDoc] = await Promise.all([getDoc(prevDocRef), getDoc(currentDocRef)]);
+
+                const prevStatuses = prevDoc.exists() ? prevDoc.data().statuses || {} : {};
+                const currentStatuses = currentDoc.exists() ? currentDoc.data().statuses || {} : {};
+
+                const updates = {};
+                let updatesMade = false;
+                const logPromises = [];
+
+                for (const user of allUsers) {
+                    // If user has no status for *today* BUT had one for *yesterday*
+                    if (!currentStatuses[user.id] && prevStatuses[user.id]) {
+                        
+                        // Copy previous status
+                        const newStatus = { ...prevStatuses[user.id] };
+
+                        // Reset "Served" status back to "Lunch" / "Dinner"
+                        if (newStatus.lunch === "Served-Lunch") {
+                            newStatus.lunch = "Lunch";
+                        }
+                        if (newStatus.dinner === "Served-Dinner") {
+                            newStatus.dinner = "Dinner";
+                        }
+
+                        updates[`statuses.${user.id}`] = newStatus;
+                        updatesMade = true;
+
+                        // Log this automatic action
+                        logPromises.push(logAudit(user.name, "AUTO: Status Carry-over", newStatus));
+                    }
+                }
+
+                if (updatesMade) {
+                    console.log("Applying status carry-over updates...");
+                    // Apply all updates and log them in parallel
+                    await Promise.all([
+                        setDoc(currentDocRef, updates, { merge: true }),
+                        ...logPromises
+                    ]);
+                } else {
+                    console.log("No carry-over needed.");
+                }
+
+            } catch (error) {
+                console.error("Error during status carry-over: ", error);
+            }
+        }
+
+        /**
+         * Fetches and calculates total Lunch/Dinner for the entire selected month
+         */
+        async function fetchMonthlyTotals() {
+            const [year, month] = selectedDate.split('-');
+            const yearMonth = `${year}-${month}`;
+            const firstDay = `${yearMonth}-01`;
+            // Get last day of month
+            const lastDayDate = new Date(year, parseInt(month, 10), 0); 
+            const lastDay = `${yearMonth}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
+
+            console.log(`Fetching monthly totals for: ${yearMonth} (from ${firstDay} to ${lastDay})`);
+
+            // Reset totals
+            const totals = {};
+            allUsers.forEach(user => {
+                totals[user.id] = { lunch: 0, dinner: 0 };
+            });
+
+            try {
+                const q = query(collection(db, "roster-status-by-date"),
+                    where(documentId(), ">=", firstDay),
+                    where(documentId(), "<=", lastDay)
+                );
+
+                const querySnapshot = await getDocs(q);
+
+                querySnapshot.forEach((doc) => {
+                    const statuses = doc.data().statuses || {};
+                    for (const userId in statuses) {
+                        if (totals[userId]) {
+                            const status = statuses[userId];
+                            if (status.lunch === "Lunch" || status.lunch === "Served-Lunch") {
+                                totals[userId].lunch++;
+                            }
+                            if (status.dinner === "Dinner" || status.dinner === "Served-Dinner") {
+                                totals[userId].dinner++;
+                            }
+                        }
+                    }
+                });
+                
+                monthlyTotals = totals;
+                console.log("Monthly totals calculated.");
+
+            } catch (error) {
+                console.error("Error fetching monthly totals: ", error);
+            }
+        }
+
+        // --- UI RENDERING ---
+
+        /**
+         * Main render function. Redraws the dashboard based on global state.
+         */
+        function renderDashboard() {
+            // 1. Clear all batch tables
+            BATCHES.forEach(batch => {
+                const tbody = document.getElementById(`roster-batch-${batch}`);
+                if (tbody) tbody.innerHTML = '';
+            });
+
+            // 2. Filter users by selected gender
+            const filteredUsers = allUsers.filter(u => u.gender === selectedGender);
+
+            // 3. Init daily totals
+            const dailyTotals = { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0 };
+            
+            // 4. Loop through filtered users and build table rows
+            for (const user of filteredUsers) {
+                const userStatus = dateStatuses[user.id] || {};
+                
+                // 4a. Update daily totals
+                if (userStatus.lunch) dailyTotals.lunch++;
+                if (userStatus.dinner) dailyTotals.dinner++;
+                if (userStatus.mutton) dailyTotals.mutton++;
+                if (userStatus.egg_fish) dailyTotals.egg_fish++;
+                if (userStatus.egg_poltry) dailyTotals.egg_poltry++;
+
+                // 4b. Find the correct batch table
+                const tbody = document.getElementById(`roster-batch-${user.batch}`);
+                if (!tbody) continue; // Skip if batch table doesn't exist
+
+                const tr = document.createElement('tr');
+                tr.id = `user-row-${user.id}`;
+                
+                // Highlight logged-in user
+                if (currentRole === 'user' && currentLoggedInUser && currentLoggedInUser.id === user.id) {
+                    tr.classList.add('bg-blue-50');
+                }
+
+                const userMonthlyTotal = monthlyTotals[user.id] || { lunch: 0, dinner: 0 };
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-sm font-medium text-gray-900">${user.name}</td>
+                    <td class="py-3 px-4 text-sm text-gray-700">${user.deposit}</td>
+                    <td class="py-3 px-4 text-sm text-gray-700">
+                        <span class="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">L: ${userMonthlyTotal.lunch}</span>
+                        <span class="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800">D: ${userMonthlyTotal.dinner}</span>
+                    </td>
+                    <td class="py-3 px-4 text-sm text-gray-700 space-x-1 space-y-1">
+                        ${createStatusBadges(userStatus, user.id)}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+
+            // 5. Update Daily Total Cards
+            document.getElementById('total-lunch').textContent = dailyTotals.lunch;
+            document.getElementById('total-dinner').textContent = dailyTotals.dinner;
+            document.getElementById('total-mutton').textContent = dailyTotals.mutton;
+            document.getElementById('total-egg-fish').textContent = dailyTotals.egg_fish;
+            document.getElementById('total-egg-poltry').textContent = dailyTotals.egg_poltry;
+        }
+
+        /**
+         * Creates the HTML for status badges (or serve buttons for staff)
+         * @param {object} status - The user's status object
+         * @param {string} userId - The user's ID
+         * @returns {string} HTML string
+         */
+        function createStatusBadges(status, userId) {
+            let html = '';
+            const isToday = selectedDate === getTodayString();
+            
+            // Lunch
+            if (status.lunch) {
+                if (currentRole === 'staff' && isToday && status.lunch === 'Lunch') {
+                    html += `<button class="serve-btn text-xs font-medium bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600 transition-colors" data-user-id="${userId}" data-meal="lunch">Serve Lunch</button>`;
+                } else if (status.lunch === 'Served-Lunch') {
+                    html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-green-100 text-green-800">Served-Lunch</span>`;
+                } else {
+                    html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-blue-100 text-blue-800">Lunch</span>`;
+                }
+            }
+
+            // Dinner
+            if (status.dinner) {
+                if (currentRole === 'staff' && isToday && status.dinner === 'Dinner') {
+                    html += `<button class="serve-btn text-xs font-medium bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600 transition-colors" data-user-id="${userId}" data-meal="dinner">Serve Dinner</button>`;
+                } else if (status.dinner === 'Served-Dinner') {
+                    html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-green-100 text-green-800">Served-Dinner</span>`;
+                } else {
+                    html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-indigo-100 text-indigo-800">Dinner</span>`;
+                }
+            }
+            
+            // Other items
+            if (status.mutton) {
+                html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-red-100 text-red-800">Mutton</span>`;
+            }
+            if (status.egg_fish) {
+                html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-yellow-100 text-yellow-800">Egg (Fish)</span>`;
+            }
+            if (status.egg_poltry) {
+                html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-yellow-100 text-yellow-800">Egg (Poultry)</span>`;
+            }
+
+            return html;
+        }
+
+        // --- EVENT HANDLERS ---
+
+        /**
+         * Handles the date picker change event
+         */
+        function handleDateChange(e) {
+            selectedDate = e.target.value;
+            fetchDataForSelectedDate();
+            checkUserDateLock(); // Check lock for user
+        }
+
+        /**
+         * Handles the gender toggle change
+         * @param {'Boy' | 'Girl'} gender 
+         */
+        function handleGenderChange(gender) {
+            if (selectedGender === gender) return; // No change
+            
+            selectedGender = gender;
+            
+            // Update button UI
+            if (gender === 'Boy') {
+                genderBtnBoy.classList.add('bg-blue-600', 'text-white');
+                genderBtnBoy.classList.remove('text-gray-600');
+                genderBtnGirl.classList.remove('bg-blue-600', 'text-white');
+                genderBtnGirl.classList.add('text-gray-600');
+            } else {
+                genderBtnGirl.classList.add('bg-blue-600', 'text-white');
+                genderBtnGirl.classList.remove('text-gray-600');
+                genderBtnBoy.classList.remove('bg-blue-600', 'text-white');
+                genderBtnBoy.classList.add('text-gray-600');
+            }
+
+            // Reset user login
+            currentLoggedInUser = null;
+            userUpdatePanel.classList.add('hidden');
+            userBatchSelect.value = '';
+
+            // Repopulate dropdowns and re-render
+            populateUserLoginDropdown();
+            populateAdminNameDropdown();
+            renderDashboard(); // Re-renders with new gender filter
+        }
+
+        // --- ROLE & LOGIN HANDLERS ---
+
+        async function handleAdminLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('admin-username').value;
+            const pass = document.getElementById('admin-password').value;
+            const errorMsg = document.getElementById('admin-login-error');
+
+            if (user === 'admin' && pass === 'admin123') {
+                currentRole = 'admin';
+                adminPanel.classList.remove('hidden');
+                adminLoginModal.classList.add('hidden');
+                errorMsg.classList.add('hidden');
+                document.getElementById('admin-login-form').reset();
+                handleStaffLogout(true); // Ensure staff UI is reset
+            } else {
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        async function handleStaffLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('staff-username').value;
+            const pass = document.getElementById('staff-password').value;
+            const errorMsg = document.getElementById('staff-login-error');
+            
+            if (user === 'staff' && pass === 'staff123') {
+                currentRole = 'staff';
+                
+                // Update UI for Staff
+                leftColumn.classList.add('hidden');
+                rightColumn.classList.remove('lg:col-span-3');
+                rightColumn.classList.add('lg:col-span-4'); // Full width
+                
+                staffLoginBtn.classList.add('hidden');
+                adminLoginBtn.classList.add('hidden');
+                historyBtn.classList.add('hidden');
+                staffLogoutBtn.classList.remove('hidden');
+
+                adminPanel.classList.add('hidden'); // Hide admin panel if it was open
+                staffLoginModal.classList.add('hidden');
+                errorMsg.classList.add('hidden');
+                document.getElementById('staff-login-form').reset();
+                
+                // Re-render dashboard to show "Serve" buttons
+                renderDashboard();
+            } else {
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        function handleStaffLogout(isSwitchingToAdmin = false) {
+            currentRole = 'user';
+            
+            // Restore UI
+            leftColumn.classList.remove('hidden');
+            rightColumn.classList.add('lg:col-span-3');
+            rightColumn.classList.remove('lg:col-span-4');
+            
+            staffLoginBtn.classList.remove('hidden');
+            adminLoginBtn.classList.remove('hidden');
+            historyBtn.classList.remove('hidden');
+            staffLogoutBtn.classList.add('hidden');
+
+            // Re-render dashboard to hide "Serve" buttons
+            if (!isSwitchingToAdmin) {
+                renderDashboard();
+            }
+        }
+
+        /**
+         * Handles staff clicking a "Serve" button
+         */
+        async function handleServeMeal(e) {
+            const userId = e.target.dataset.userId;
+            const meal = e.target.dataset.meal; // "lunch" or "dinner"
+            const user = allUsers.find(u => u.id === userId);
+            
+            if (!user) return;
+            
+            const newStatusValue = meal === 'lunch' ? 'Served-Lunch' : 'Served-Dinner';
+            const statusKey = `statuses.${userId}.${meal}`;
+
+            try {
+                const docRef = doc(db, "roster-status-by-date", selectedDate);
+                await updateDoc(docRef, {
+                    [statusKey]: newStatusValue
+                });
+                
+                logAudit(`Staff (${auth.currentUser.uid})`, `SERVED: ${meal} to ${user.name}`, { [meal]: newStatusValue });
+
+            } catch (error) {
+                console.error("Error serving meal: ", error);
+            }
+        }
+        
+        // --- USER PANEL HANDLERS ---
+        
+        function populateUserLoginDropdown() {
+            populateDropdown(userBatchSelect, userNameSelect, selectedGender);
+        }
+
+        function handleUserSelect(e) {
+            const userId = e.target.value;
+            if (!userId) {
+                currentLoggedInUser = null;
+                userUpdatePanel.classList.add('hidden');
+            } else {
+                currentLoggedInUser = allUsers.find(u => u.id === userId);
+                userUpdatePanel.classList.remove('hidden');
+                userUpdateHeading.textContent = `Update for: ${currentLoggedInUser.name}`;
+                
+                // Populate checkboxes with current status
+                const status = dateStatuses[currentLoggedInUser.id] || {};
+                userCheckboxes.lunch.checked = !!status.lunch;
+                userCheckboxes.dinner.checked = !!status.dinner;
+                userCheckboxes.mutton.checked = !!status.mutton;
+                userCheckboxes.egg_fish.checked = !!status.egg_fish;
+                userCheckboxes.egg_poltry.checked = !!status.egg_poltry;
+                
+                // Check if user is allowed to update
+                checkUserDateLock();
+            }
+            // Re-render to highlight the user
+            renderDashboard();
+        }
+
+        /**
+         * CRITICAL LOCK (User): Checks if the user is allowed to update.
+         */
+        function checkUserDateLock() {
+            if (currentRole !== 'user' || !currentLoggedInUser) return;
+
+            const isTomorrow = selectedDate === getTomorrowString();
+            
+            if (isTomorrow) {
+                // Allow update
+                userDateLockMsg.classList.add('hidden');
+                userUpdateSaveBtn.disabled = false;
+                Object.values(userCheckboxes).forEach(cb => cb.disabled = false);
+            } else {
+                // Deny update
+                userDateLockMsg.classList.remove('hidden');
+                userUpdateSaveBtn.disabled = true;
+                Object.values(userCheckboxes).forEach(cb => cb.disabled = true);
+            }
+        }
+        
+        /**
+         * Saves the user's updated status
+         */
+        async function handleUserStatusUpdate() {
+            if (!currentLoggedInUser) return;
+
+            // Don't save "Served-..." status. If it exists, keep it, else set to "Lunch" or null.
+            const currentStatus = dateStatuses[currentLoggedInUser.id] || {};
+
+            let lunchStatus = null;
+            if (userCheckboxes.lunch.checked) {
+                lunchStatus = (currentStatus.lunch === 'Served-Lunch') ? 'Served-Lunch' : 'Lunch';
+            }
+            
+            let dinnerStatus = null;
+            if (userCheckboxes.dinner.checked) {
+                dinnerStatus = (currentStatus.dinner === 'Served-Dinner') ? 'Served-Dinner' : 'Dinner';
+            }
+
+            const newStatus = {
+                lunch: lunchStatus,
+                dinner: dinnerStatus,
+                mutton: userCheckboxes.mutton.checked,
+                egg_fish: userCheckboxes.egg_fish.checked,
+                egg_poltry: userCheckboxes.egg_poltry.checked,
+            };
+
+            try {
+                const docRef = doc(db, "roster-status-by-date", selectedDate);
+                // Use setDoc with merge:true to update/create the nested user status
+                await setDoc(docRef, {
+                    statuses: {
+                        [currentLoggedInUser.id]: newStatus
+                    }
+                }, { merge: true });
+
+                logAudit(currentLoggedInUser.name, "USER: Status Update", newStatus);
+                showCustomAlert("Status updated successfully!");
+
+            } catch (error) {
+                console.error("Error updating user status: ", error);
+                showCustomAlert("Error: Could not update status.", "error");
+            }
+        }
+
+
+        // --- ADMIN PANEL HANDLERS ---
+        
+        async function handleAdminAddUser(e) {
+            e.preventDefault();
+            const name = document.getElementById('admin-add-name').value;
+            const batch = document.getElementById('admin-add-batch').value;
+            const gender = document.getElementById('admin-add-gender').value;
+            const deposit = parseInt(document.getElementById('admin-add-deposit').value, 10);
+
+            if (!name || !batch || !gender || isNaN(deposit)) {
+                showCustomAlert("Please fill all fields correctly.", "error");
+                return;
+            }
+
+            try {
+                const docRef = await addDoc(collection(db, "roster-users"), {
+                    name,
+                    batch,
+                    gender,
+                    deposit
+                });
+                logAudit(`Admin (${auth.currentUser.uid})`, `ADMIN: Added User ${name}`, {}, getTodayString());
+                showCustomAlert(`User ${name} added successfully!`);
+                adminAddUserForm.reset();
+            } catch (error) {
+                console.error("Error adding user: ", error);
+                showCustomAlert("Error: Could not add user.", "error");
+            }
+        }
+        
+        function populateAdminNameDropdown() {
+            // Note: Admin dropdowns are *also* filtered by the main gender toggle
+            populateDropdown(adminUpdateBatchSelect, adminUpdateNameSelect, selectedGender);
+        }
+
+        async function handleAdminUpdateDeposit(e) {
+            e.preventDefault();
+            const userId = adminUpdateNameSelect.value;
+            const newDeposit = parseInt(document.getElementById('admin-update-deposit').value, 10);
+
+            if (!userId || isNaN(newDeposit)) {
+                showCustomAlert("Please select a user and enter a valid deposit amount.", "error");
+                return;
+            }
+
+            try {
+                const userRef = doc(db, "roster-users", userId);
+                await updateDoc(userRef, {
+                    deposit: newDeposit
+                });
+
+                const userName = allUsers.find(u => u.id === userId)?.name || 'Unknown';
+                logAudit(`Admin (${auth.currentUser.uid})`, `ADMIN: Updated Deposit for ${userName} to ${newDeposit}`, {}, getTodayString());
+                showCustomAlert(`Deposit for ${userName} updated successfully!`);
+                adminUpdateDepositForm.reset();
+                adminUpdateNameSelect.innerHTML = '<option value="">Select Name</option>';
+                adminUpdateNameSelect.disabled = true;
+
+    
+            } catch (error) {
+                console.error("Error updating deposit: ", error);
+                showCustomAlert("Error: Could not update deposit.", "error");
+            }
+        }
+
+        /**
+         * Generic helper to populate a name dropdown based on a batch dropdown
+         * @param {HTMLSelectElement} batchSelect 
+         * @param {HTMLSelectElement} nameSelect 
+         * @param {string} gender 
+         */
+        function populateDropdown(batchSelect, nameSelect, gender) {
+            const selectedBatch = batchSelect.value;
+            const currentSelectedName = nameSelect.value; // Preserve selection if possible
+            nameSelect.innerHTML = '<option value="">Select Name</option>';
+            nameSelect.disabled = true;
+
+            if (selectedBatch) {
+                const usersInBatch = allUsers.filter(u => u.batch === selectedBatch && u.gender === gender);
+                
+                usersInBatch.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = user.name;
+                    if(user.id === currentSelectedName) {
+                        option.selected = true; // Re-select if still in list
+                    }
+                    nameSelect.appendChild(option);
+                });
+                
+                nameSelect.disabled = false;
+            }
+        }
+
+        // --- CSV DOWNLOAD HANDLERS ---
+
+        /**
+         * Triggers download for the *current* main selected date and gender
+         */
+        function handleDownloadCSV() {
+            const filteredUsers = allUsers.filter(u => u.gender === selectedGender);
+            const csvContent = generateCSVContent(selectedDate, dateStatuses, filteredUsers, selectedGender);
+            triggerCSVDownload(csvContent, `smc-roster-${selectedGender}-${selectedDate}.csv`);
+        }
+
+        /**
+         * Triggers download for the date selected in the history modal
+         */
+        async function handleDownloadHistoryCSV() {
+            const historicalDate = historyDatePicker.value;
+            if (!historicalDate) {
+                showCustomAlert("Please select a date to download.", "error");
+                return;
+            }
+
+            downloadHistoryCsvBtn.disabled = true;
+            downloadHistoryCsvBtn.textContent = "Loading...";
+
+            try {
+                const genderForHistory = selectedGender; // Use main gender toggle
+                const historicalUsers = allUsers.filter(u => u.gender === genderForHistory);
+                
+                const dateDocRef = doc(db, "roster-status-by-date", historicalDate);
+                const docSnap = await getDoc(dateDocRef);
+                
+                const historicalStatuses = docSnap.exists() ? docSnap.data().statuses || {} : {};
+                
+                const csvContent = generateCSVContent(historicalDate, historicalStatuses, historicalUsers, genderForHistory);
+                triggerCSVDownload(csvContent, `smc-roster-${genderForHistory}-${historicalDate}.csv`);
+                
+                historyModal.classList.add('hidden'); // Close modal on success
+
+            } catch (error) {
+                console.error("Error downloading history CSV: ", error);
+                showCustomAlert("Error fetching historical data.", "error");
+            }
+
+            downloadHistoryCsvBtn.disabled = false;
+            downloadHistoryCsvBtn.textContent = "Download CSV";
+        }
+
+        /**
+         * Reusable function to generate the CSV content string
+         * @param {string} dateStr - The date for the report
+         * @param {object} statuses - The status object { userId: { status } }
+         * @param {Array} usersToInclude - The pre-filtered list of users
+         * @param {string} gender - The gender for the report header
+         * @returns {string} The CSV content
+         */
+        function generateCSVContent(dateStr, statuses, usersToInclude, gender) {
+            let csvContent = "";
+            const summary = { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0 };
+
+            // Add Header Info
+            csvContent += `SMC Meal Roster\r\n`;
+            csvContent += `Date: ${dateStr}\r\n`;
+            csvContent += `Gender: ${gender}\r\n\r\n`;
+
+            // Process each batch
+            BATCHES.forEach(batch => {
+                const batchUsers = usersToInclude.filter(u => u.batch == batch);
+                if (batchUsers.length === 0) return;
+
+                csvContent += `Batch ${batch}\r\n`;
+                csvContent += "Name,Deposit,Lunch,Dinner,Mutton,Egg (Fish),Egg (Poultry)\r\n";
+
+                batchUsers.forEach(user => {
+                    const status = statuses[user.id] || {};
+                    const lunch = status.lunch || "";
+                    const dinner = status.dinner || "";
+                    const mutton = status.mutton ? "Yes" : "";
+                    const egg_fish = status.egg_fish ? "Yes" : "";
+                    const egg_poltry = status.egg_poltry ? "Yes" : "";
+
+                    // Add to summary
+                    if (status.lunch) summary.lunch++;
+                    if (status.dinner) summary.dinner++;
+                    if (status.mutton) summary.mutton++;
+                    if (status.egg_fish) summary.egg_fish++;
+                    if (status.egg_poltry) summary.egg_poltry++;
+                    
+                    // Add row (quoting all fields to handle potential commas in names)
+                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}"\r\n`;
+                });
+
+                csvContent += "\r\n"; // Add space between batches
+            });
+
+            // Add Summary
+            csvContent += "Summary\r\n";
+            csvContent += "Item,Total\r\n";
+            csvContent += `Total Lunch,${summary.lunch}\r\n`;
+            csvContent += `Total Dinner,${summary.dinner}\r\n`;
+            csvContent += `Total Mutton,${summary.mutton}\r\n`;
+            csvContent += `Total Egg (Fish),${summary.egg_fish}\r\n`;
+            csvContent += `Total Egg (Poultry),${summary.egg_poltry}\r\n`;
+            
+            return csvContent;
+        }
+
+        /**
+         * Triggers the browser to download a CSV file
+         * @param {string} csvContent 
+         * @param {string} fileName 
+         */
+        function triggerCSVDownload(csvContent, fileName) {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // --- START THE APP ---
+        initializeAppAndAuth();
+        
+    </script>
 
 </body>
 </html>
