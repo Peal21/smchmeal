@@ -39,6 +39,29 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #a8a8a8;
         }
+        /* Loader for buttons */
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+            pointer-events: none;
+        }
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            margin-top: -10px;
+            margin-left: -10px;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -183,10 +206,40 @@
                                     <select id="admin-update-name" class="w-full border-gray-300 rounded-lg shadow-sm" required disabled>
                                         <option value="">Select Name</option>
                                     </select>
-                                    <input type="number" id="admin-update-deposit" placeholder="New Deposit Amount" class="w-full border-gray-300 rounded-lg shadow-sm" required>
-                                    <button type="submit" class="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700">Update Deposit</button>
+                                    <!-- MODIFIED: Changed placeholder and name -->
+                                    <input type="number" id="admin-deposit-add-amount" placeholder="Amount to ADD (e.g. 1000)" class="w-full border-gray-300 rounded-lg shadow-sm" required>
+                                    <button type="submit" class="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700">Add Deposit</button>
                                 </form>
                             </div>
+                            
+                            <!-- NEW: Set Meal Rate -->
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">Admin: Set Meal Rate</h2>
+                                <div class="space-y-4">
+                                    <label for="admin-meal-rate" class="block text-sm font-medium text-gray-700">Current Meal Rate (Tk)</label>
+                                    <input type="number" id="admin-meal-rate" placeholder="e.g. 50" class="w-full border-gray-300 rounded-lg shadow-sm">
+                                    <button id="admin-save-rate-btn" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700">Save Rate</button>
+                                </div>
+                            </div>
+                            
+                            <!-- NEW: Generate Monthly Bill -->
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">Admin: Monthly Billing</h2>
+                                <div class="space-y-4">
+                                    <p class="text-sm text-gray-600">Generate a bill for a specific month. This will calculate totals and allow you to update all user deposits.</p>
+                                    <button id="admin-generate-bill-btn" class="w-full bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700">Generate Monthly Bill</button>
+                                </div>
+                            </div>
+
+                            <!-- NEW: Reset All Deposits (DANGER ZONE) -->
+                            <div class="bg-white p-5 rounded-lg shadow-md border-2 border-red-500">
+                                <h2 class="text-lg font-semibold text-red-700 border-b pb-3 mb-4">Admin: DANGER ZONE</h2>
+                                <div class="space-y-4">
+                                    <p class="text-sm text-gray-600">This will set ALL user deposits (Boys & Girls) to 0. This cannot be undone.</p>
+                                    <button id="admin-reset-deposits-btn" class="w-full bg-red-800 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-900">Reset All Deposits to 0</button>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </aside>
@@ -226,7 +279,7 @@
 
                     <!-- Main Roster - Batch Cards -->
                     <div id="roster-area" class="space-y-6">
-                        <!-- Batch cards will be dynamically generated here -->
+                        <!-- Batch 10 -->
                         <div class="bg-white rounded-lg shadow-md overflow-hidden">
                             <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 10</h2>
                             <div class="overflow-x-auto">
@@ -245,6 +298,7 @@
                                 </table>
                             </div>
                         </div>
+                        <!-- Batch 11 -->
                         <div class="bg-white rounded-lg shadow-md overflow-hidden">
                             <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 11</h2>
                             <div class="overflow-x-auto">
@@ -261,6 +315,7 @@
                                 </table>
                             </div>
                         </div>
+                        <!-- Batch 12 -->
                         <div class="bg-white rounded-lg shadow-md overflow-hidden">
                             <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 12</h2>
                             <div class="overflow-x-auto">
@@ -277,6 +332,7 @@
                                 </table>
                             </div>
                         </div>
+                        <!-- Batch 13 -->
                         <div class="bg-white rounded-lg shadow-md overflow-hidden">
                             <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 13</h2>
                             <div class="overflow-x-auto">
@@ -293,6 +349,7 @@
                                 </table>
                             </div>
                         </div>
+                        <!-- Batch 14 -->
                         <div class="bg-white rounded-lg shadow-md overflow-hidden">
                             <h2 class="bg-gray-50 p-4 border-b text-xl font-semibold text-gray-700">Batch 14</h2>
                             <div class="overflow-x-auto">
@@ -349,7 +406,7 @@
         </div>
     </div>
     
-    <!-- NEW: History Download Modal -->
+    <!-- History Download Modal -->
     <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
             <h2 class="text-xl font-semibold text-center mb-4">Download Historical Roster</h2>
@@ -365,6 +422,74 @@
             </div>
         </div>
     </div>
+
+    <!-- NEW: Monthly Bill Generation Modal -->
+    <div id="billing-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <h2 class="text-2xl font-semibold text-center mb-4 text-gray-800">Generate Monthly Bill</h2>
+            
+            <!-- Step 1: Month Selection -->
+            <div id="billing-step-1" class="space-y-4">
+                <div>
+                    <label for="billing-month-input" class="block text-sm font-medium text-gray-700">Select Month (YYYY-MM)</label>
+                    <input type="month" id="billing-month-input" class="mt-1 w-full border-gray-300 rounded-lg shadow-sm" required>
+                </div>
+                <p class="text-sm text-gray-600">Current Meal Rate: <strong id="billing-current-rate" class="text-lg text-indigo-600">Not Set</strong></p>
+                <button id="billing-generate-preview-btn" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
+                    Generate Preview
+                </button>
+            </div>
+
+            <!-- Step 2: Preview & Confirm -->
+            <div id="billing-step-2" class="hidden flex-1 flex flex-col min-h-0">
+                <h3 class="text-xl font-semibold mb-2">Billing Preview for <span id="billing-preview-month"></span></h3>
+                <div class="overflow-y-auto flex-1 border rounded-lg">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
+                                <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase">Gender</th>
+                                <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase">Total Meals</th>
+                                <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase">Total Bill</th>
+                                <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase">Old Deposit</th>
+                                <th class="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase">New Deposit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="billing-preview-table" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex space-x-4">
+                    <button id="billing-confirm-btn" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">
+                        Confirm & Update All Deposits
+                    </button>
+                    <button id="billing-cancel-btn" class="w-1/3 bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+            
+            <button type="button" id="billing-modal-close" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- NEW: Reset Deposits Confirmation Modal -->
+    <div id="reset-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] hidden p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-xl font-semibold text-red-700 mb-4">Are you absolutely sure?</h2>
+            <p class="text-gray-700 mb-4">This action is irreversible. It will set the deposit of <strong>ALL</strong> users (Boys and Girls) to 0. This will not delete the users, only reset their balance.</p>
+            <p class="text-gray-700 mb-4">To confirm, please type "RESET" in the box below.</p>
+            <input type="text" id="reset-confirm-input" class="w-full border-gray-300 rounded-lg shadow-sm mb-4" placeholder="RESET">
+            <div class="flex space-x-4">
+                <button id="reset-confirm-final-btn" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 disabled:bg-gray-400" disabled>Confirm Reset</button>
+                <button id="reset-confirm-cancel-btn" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Firebase Auth Error Modal -->
     <div id="auth-error-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
@@ -403,7 +528,8 @@
             getDocs,
             Timestamp,
             setLogLevel,
-            documentId // Import documentId for query
+            documentId, // Import documentId for query
+            writeBatch // NEW: Import writeBatch for billing
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- UPDATED FIREBASE CONFIG ---
@@ -418,18 +544,6 @@
         };
         // ------------------------------------
 
-        // --- FIRESTORE SECURITY RULE (for your project) ---
-        /*
-        service cloud.firestore {
-          match /databases/{database}/documents {
-            // Allow read/write access if the user is authenticated (even anonymously)
-            match /{document=**} {
-              allow read, write: if request.auth != null;
-            }
-          }
-        }
-        */
-
         // --- GLOBAL STATE ---
         let app, auth, db;
         let currentRole = 'user'; // 'user', 'admin', 'staff'
@@ -440,6 +554,8 @@
         let allUsers = []; // All users from 'roster-users'
         let dateStatuses = {}; // Statuses for the selected date { userId: { status } }
         let monthlyTotals = {}; // { userId: { lunch: 0, dinner: 0 } }
+        let currentMealRate = 0; // NEW: For billing
+        let billingPreviewData = []; // NEW: For billing modal
 
         let unsubscribeDateStatus = null; // Function to detach old listener
         let unsubscribeUsers = null;
@@ -490,6 +606,29 @@
         const historyDatePicker = document.getElementById('history-date-picker'); // New
         const downloadHistoryCsvBtn = document.getElementById('download-history-csv-btn'); // New
         const historyModalClose = document.getElementById('history-modal-close'); // New
+
+        // NEW: Billing Elements
+        const adminMealRateInput = document.getElementById('admin-meal-rate');
+        const adminSaveRateBtn = document.getElementById('admin-save-rate-btn');
+        const adminGenerateBillBtn = document.getElementById('admin-generate-bill-btn');
+        const billingModal = document.getElementById('billing-modal');
+        const billingModalClose = document.getElementById('billing-modal-close');
+        const billingStep1 = document.getElementById('billing-step-1');
+        const billingStep2 = document.getElementById('billing-step-2');
+        const billingMonthInput = document.getElementById('billing-month-input');
+        const billingCurrentRate = document.getElementById('billing-current-rate');
+        const billingGeneratePreviewBtn = document.getElementById('billing-generate-preview-btn');
+        const billingPreviewMonth = document.getElementById('billing-preview-month');
+        const billingPreviewTable = document.getElementById('billing-preview-table');
+        const billingConfirmBtn = document.getElementById('billing-confirm-btn');
+        const billingCancelBtn = document.getElementById('billing-cancel-btn');
+
+        // NEW: Reset Elements
+        const adminResetDepositsBtn = document.getElementById('admin-reset-deposits-btn');
+        const resetConfirmModal = document.getElementById('reset-confirm-modal');
+        const resetConfirmInput = document.getElementById('reset-confirm-input');
+        const resetConfirmFinalBtn = document.getElementById('reset-confirm-final-btn');
+        const resetConfirmCancelBtn = document.getElementById('reset-confirm-cancel-btn');
 
 
         // --- HELPER FUNCTIONS ---
@@ -574,7 +713,7 @@
 
             const modal = document.createElement('div');
             modal.id = 'custom-alert-modal';
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4'; // High z-index
             modal.innerHTML = `
                 <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm transform transition-all scale-95 opacity-0" role="alert">
                     <div class="flex">
@@ -639,7 +778,7 @@
                 } else if (error.code === 'invalid-api-key') {
                     showCustomAlert("Invalid Firebase API Key. Apnar firebaseConfig object-ti check korun.", "error");
                 } else {
-                     showCustomAlert("Firebase connect hote parchena. Apnar internet connection ebong config check korun.", "error");
+                    showCustomAlert("Firebase connect hote parchena. Apnar internet connection ebong config check korun.", "error");
                 }
             }
         }
@@ -655,8 +794,11 @@
 
             // 3. Start listening to user collection
             listenToUsers();
+            
+            // 4. NEW: Fetch initial app settings (meal rate)
+            fetchAppSettings();
 
-            // 4. Fetch data for the default date (this triggers the whole data pipeline)
+            // 5. Fetch data for the default date (this triggers the whole data pipeline)
             fetchDataForSelectedDate();
         }
 
@@ -683,7 +825,7 @@
             staffLogoutBtn.addEventListener('click', handleStaffLogout);
 
             // User Panel
-            userBatchSelect.addEventListener('change', populateUserLoginDropdown); // FIX: Was populateUserNameDropdown
+            userBatchSelect.addEventListener('change', populateUserLoginDropdown); 
             userNameSelect.addEventListener('change', handleUserSelect);
             userUpdateSaveBtn.addEventListener('click', handleUserStatusUpdate);
             
@@ -695,6 +837,37 @@
             // CSV Download
             downloadCsvBtn.addEventListener('click', handleDownloadCSV);
             downloadHistoryCsvBtn.addEventListener('click', handleDownloadHistoryCSV); // New
+
+            // NEW: Billing Listeners
+            adminSaveRateBtn.addEventListener('click', handleSaveMealRate);
+            adminGenerateBillBtn.addEventListener('click', () => {
+                // Set default month to last month
+                const today = new Date();
+                today.setMonth(today.getMonth() - 1);
+                billingMonthInput.value = today.toISOString().substring(0, 7); // YYYY-MM
+                billingModal.classList.remove('hidden');
+                billingStep1.classList.remove('hidden');
+                billingStep2.classList.add('hidden');
+            });
+            billingModalClose.addEventListener('click', () => billingModal.classList.add('hidden'));
+            billingCancelBtn.addEventListener('click', () => {
+                billingStep1.classList.remove('hidden');
+                billingStep2.classList.add('hidden');
+            });
+            billingGeneratePreviewBtn.addEventListener('click', handleGenerateBillPreview);
+            billingConfirmBtn.addEventListener('click', handleConfirmBillUpdate);
+
+            // NEW: Reset Listeners
+            adminResetDepositsBtn.addEventListener('click', () => {
+                resetConfirmModal.classList.remove('hidden');
+                resetConfirmInput.value = '';
+                resetConfirmFinalBtn.disabled = true;
+            });
+            resetConfirmCancelBtn.addEventListener('click', () => resetConfirmModal.classList.add('hidden'));
+            resetConfirmInput.addEventListener('input', (e) => {
+                resetConfirmFinalBtn.disabled = e.target.value !== 'RESET';
+            });
+            resetConfirmFinalBtn.addEventListener('click', handleResetAllDeposits);
 
             // Add listeners for dynamic content (serve buttons)
             // We use event delegation on the roster area
@@ -732,6 +905,30 @@
             });
         }
         
+        /**
+         * NEW: Fetches app settings like meal rate
+         */
+        async function fetchAppSettings() {
+            const settingsDocRef = doc(db, "roster-config", "settings");
+            // Listen for real-time changes to settings
+            onSnapshot(settingsDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const settings = docSnap.data();
+                    currentMealRate = settings.mealRate || 0;
+                    adminMealRateInput.value = currentMealRate;
+                    billingCurrentRate.textContent = `Tk ${currentMealRate}`;
+                    console.log(`Updated meal rate to: ${currentMealRate}`);
+                } else {
+                    console.log("No settings doc found. Defaulting meal rate to 0.");
+                    currentMealRate = 0;
+                    adminMealRateInput.value = 0;
+                    billingCurrentRate.textContent = "Not Set";
+                }
+            }, (error) => {
+                console.error("Error fetching settings:", error);
+            });
+        }
+
         /**
          * Fetches all data (and sets up listeners) for the currently selected date.
          * This is the main data pipeline trigger.
@@ -1061,7 +1258,8 @@
             const pass = document.getElementById('admin-password').value;
             const errorMsg = document.getElementById('admin-login-error');
 
-            if (user === 'admin' && pass === 'admin123') {
+            // UPDATED PASSWORD
+            if (user === 'admin' && pass === 'thankspeal') {
                 currentRole = 'admin';
                 adminPanel.classList.remove('hidden');
                 adminLoginModal.classList.add('hidden');
@@ -1079,7 +1277,8 @@
             const pass = document.getElementById('staff-password').value;
             const errorMsg = document.getElementById('staff-login-error');
             
-            if (user === 'staff' && pass === 'staff123') {
+            // UPDATED PASSWORD
+            if (user === 'staff' && pass === 'thankspeal') {
                 currentRole = 'staff';
                 
                 // Update UI for Staff
@@ -1285,12 +1484,20 @@
         async function handleAdminUpdateDeposit(e) {
             e.preventDefault();
             const userId = adminUpdateNameSelect.value;
-            const newDeposit = parseInt(document.getElementById('admin-update-deposit').value, 10);
+            const amountToAdd = parseInt(document.getElementById('admin-deposit-add-amount').value, 10); // MODIFIED
 
-            if (!userId || isNaN(newDeposit)) {
-                showCustomAlert("Please select a user and enter a valid deposit amount.", "error");
+            if (!userId || isNaN(amountToAdd) || amountToAdd <= 0) { // MODIFIED check
+                showCustomAlert("Please select a user and enter a valid POSITIVE amount to add.", "error");
                 return;
             }
+
+            const user = allUsers.find(u => u.id === userId);
+            if (!user) {
+                showCustomAlert("Error: User not found.", "error");
+                return;
+            }
+            
+            const newDeposit = (user.deposit || 0) + amountToAdd; // MODIFIED: Logic is now ADDITIVE
 
             try {
                 const userRef = doc(db, "roster-users", userId);
@@ -1298,9 +1505,18 @@
                     deposit: newDeposit
                 });
 
-                const userName = allUsers.find(u => u.id === userId)?.name || 'Unknown';
-                logAudit(`Admin (${auth.currentUser.uid})`, `ADMIN: Updated Deposit for ${userName} to ${newDeposit}`, {}, getTodayString());
-                showCustomAlert(`Deposit for ${userName} updated successfully!`);
+                // NEW: Log to deposit history
+                await addDoc(collection(db, "roster-deposit-history"), {
+                    userId: user.id,
+                    userName: user.name,
+                    amountAdded: amountToAdd,
+                    newDeposit: newDeposit,
+                    timestamp: Timestamp.now(),
+                    adminId: auth.currentUser.uid
+                });
+                
+                logAudit(`Admin (${auth.currentUser.uid})`, `ADMIN: Added Deposit ${amountToAdd} for ${user.name}`, {}, getTodayString());
+                showCustomAlert(`Deposit for ${user.name} updated successfully! New balance: ${newDeposit}`);
                 adminUpdateDepositForm.reset();
                 adminUpdateNameSelect.innerHTML = '<option value="">Select Name</option>';
                 adminUpdateNameSelect.disabled = true;
@@ -1341,14 +1557,220 @@
             }
         }
 
+        // --- NEW: BILLING HANDLERS ---
+
+        /**
+         * Saves the new meal rate to Firestore
+         */
+        async function handleSaveMealRate() {
+            const newRate = parseInt(adminMealRateInput.value, 10);
+            if (isNaN(newRate) || newRate < 0) {
+                showCustomAlert("Please enter a valid, positive meal rate.", "error");
+                return;
+            }
+            
+            adminSaveRateBtn.classList.add('btn-loading');
+            try {
+                const settingsDocRef = doc(db, "roster-config", "settings");
+                await setDoc(settingsDocRef, { mealRate: newRate }, { merge: true });
+                showCustomAlert(`Meal rate updated to ${newRate} Tk`, "success");
+            } catch (error) {
+                console.error("Error saving meal rate:", error);
+                showCustomAlert("Error saving meal rate.", "error");
+            }
+            adminSaveRateBtn.classList.remove('btn-loading');
+        }
+
+        /**
+         * Step 1 of Billing: Fetches all data and generates preview
+         */
+        async function handleGenerateBillPreview() {
+            const monthString = billingMonthInput.value; // "YYYY-MM"
+            if (!monthString) {
+                showCustomAlert("Please select a month.", "error");
+                return;
+            }
+            
+            if (currentMealRate <= 0) {
+                showCustomAlert("Please set a valid Meal Rate in the Admin Panel first.", "error");
+                return;
+            }
+
+            billingGeneratePreviewBtn.classList.add('btn-loading');
+            billingPreviewData = []; // Clear old data
+
+            try {
+                // 1. Get month range
+                const [year, month] = monthString.split('-');
+                const firstDay = `${monthString}-01`;
+                const lastDayDate = new Date(year, parseInt(month, 10), 0);
+                const lastDay = `${monthString}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
+
+                // 2. Fetch all status docs for the month
+                const q = query(collection(db, "roster-status-by-date"),
+                    where(documentId(), ">=", firstDay),
+                    where(documentId(), "<=", lastDay)
+                );
+                const querySnapshot = await getDocs(q);
+
+                // 3. Calculate totals for ALL users
+                const monthlyTotals = {};
+                allUsers.forEach(user => {
+                    monthlyTotals[user.id] = { totalMeals: 0 };
+                });
+
+                querySnapshot.forEach((doc) => {
+                    const statuses = doc.data().statuses || {};
+                    for (const userId in statuses) {
+                        if (monthlyTotals[userId]) {
+                            const status = statuses[userId];
+                            if (status.lunch === "Lunch" || status.lunch === "Served-Lunch") {
+                                monthlyTotals[userId].totalMeals++;
+                            }
+                            if (status.dinner === "Dinner" || status.dinner === "Served-Dinner") {
+                                monthlyTotals[userId].totalMeals++;
+                            }
+                        }
+                    }
+                });
+
+                // 4. Build preview data
+                billingPreviewTable.innerHTML = '';
+                for (const user of allUsers) {
+                    const totals = monthlyTotals[user.id];
+                    const totalMeals = totals.totalMeals;
+                    const totalBill = totalMeals * currentMealRate;
+                    const oldDeposit = user.deposit || 0;
+                    const newDeposit = oldDeposit - totalBill;
+
+                    const previewEntry = {
+                        id: user.id,
+                        name: user.name,
+                        gender: user.gender,
+                        totalMeals,
+                        totalBill,
+                        oldDeposit,
+                        newDeposit
+                    };
+                    billingPreviewData.push(previewEntry); // Save for confirmation step
+
+                    // Add to table
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 text-sm font-medium text-gray-900">${user.name}</td>
+                        <td class="py-3 px-4 text-sm text-gray-700">${user.gender}</td>
+                        <td class="py-3 px-4 text-sm text-gray-700">${totalMeals}</td>
+                        <td class="py-3 px-4 text-sm text-red-600 font-medium">${totalBill} Tk</td>
+                        <td class="py-3 px-4 text-sm text-gray-700">${oldDeposit} Tk</td>
+                        <td class="py-3 px-4 text-sm ${newDeposit < 0 ? 'text-red-600' : 'text-green-600'} font-bold">${newDeposit} Tk</td>
+                    `;
+                    billingPreviewTable.appendChild(tr);
+                }
+
+                // 5. Show preview
+                billingPreviewMonth.textContent = monthString;
+                billingStep1.classList.add('hidden');
+                billingStep2.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error generating bill preview:", error);
+                showCustomAlert("Error generating preview. See console.", "error");
+            }
+            billingGeneratePreviewBtn.classList.remove('btn-loading');
+        }
+
+        /**
+         * Step 2 of Billing: Confirms and batch-updates all deposits
+         */
+        async function handleConfirmBillUpdate() {
+            if (billingPreviewData.length === 0) {
+                showCustomAlert("No billing data to update.", "error");
+                return;
+            }
+            
+            billingConfirmBtn.classList.add('btn-loading');
+            
+            try {
+                const batch = writeBatch(db);
+                
+                // 1. Update deposit for each user
+                for (const entry of billingPreviewData) {
+                    const userRef = doc(db, "roster-users", entry.id);
+                    batch.update(userRef, { deposit: entry.newDeposit });
+                }
+                
+                // 2. Log this billing event
+                const billingLogRef = doc(collection(db, "roster-billing-history"));
+                batch.set(billingLogRef, {
+                    month: billingMonthInput.value,
+                    mealRate: currentMealRate,
+                    adminId: auth.currentUser.uid,
+                    timestamp: Timestamp.now(),
+                    billingData: JSON.stringify(billingPreviewData) // Save a snapshot of the bill
+                });
+                
+                // 3. Commit the batch
+                await batch.commit();
+                
+                showCustomAlert(`Successfully updated deposits for ${billingPreviewData.length} users!`, "success");
+                billingModal.classList.add('hidden');
+
+            } catch (error) {
+                console.error("Error confirming bill update:", error);
+                showCustomAlert("CRITICAL ERROR: Could not update deposits. See console.", "error");
+            }
+            
+            billingConfirmBtn.classList.remove('btn-loading');
+        }
+
+        // --- NEW: DANGER ZONE HANDLER ---
+        /**
+         * NEW: DANGEROUS - Resets all user deposits to 0
+         */
+        async function handleResetAllDeposits() {
+            if (resetConfirmInput.value !== 'RESET') {
+                showCustomAlert("Confirmation text is incorrect.", "error");
+                return;
+            }
+
+            resetConfirmFinalBtn.classList.add('btn-loading');
+            
+            try {
+                const batch = writeBatch(db);
+                
+                if(allUsers.length === 0) {
+                    throw new Error("User list is empty or not loaded.");
+                }
+
+                // 1. Update deposit for each user
+                for (const user of allUsers) {
+                    const userRef = doc(db, "roster-users", user.id);
+                    batch.update(userRef, { deposit: 0 });
+                }
+                
+                // 2. Commit the batch
+                await batch.commit();
+                
+                logAudit(`Admin (${auth.currentUser.uid})`, `ADMIN: DANGER - Reset all user deposits to 0`, {}, getTodayString());
+                showCustomAlert(`Successfully reset deposits for ${allUsers.length} users to 0!`, "success");
+                resetConfirmModal.classList.add('hidden');
+
+            } catch (error) {
+                console.error("Error resetting all deposits:", error);
+                showCustomAlert("CRITICAL ERROR: Could not reset deposits. See console.", "error");
+            }
+            
+            resetConfirmFinalBtn.classList.remove('btn-loading');
+        }
+
         // --- CSV DOWNLOAD HANDLERS ---
 
         /**
-         * Triggers download for the *current* main selected date and gender
+         * Triggers download for the *current* main selected date
          */
         function handleDownloadCSV() {
-            const filteredUsers = allUsers.filter(u => u.gender === selectedGender);
-            const csvContent = generateCSVContent(selectedDate, dateStatuses, filteredUsers, selectedGender);
+            // NOTE: We pass ALL users to generate the comprehensive summary
+            const csvContent = generateCSVContent(selectedDate, dateStatuses, allUsers, selectedGender);
             triggerCSVDownload(csvContent, `smc-roster-${selectedGender}-${selectedDate}.csv`);
         }
 
@@ -1367,7 +1789,8 @@
 
             try {
                 const genderForHistory = selectedGender; // Use main gender toggle
-                const historicalUsers = allUsers.filter(u => u.gender === genderForHistory);
+                // NOTE: We pass ALL users to generate the comprehensive summary
+                const historicalUsers = allUsers; 
                 
                 const dateDocRef = doc(db, "roster-status-by-date", historicalDate);
                 const docSnap = await getDoc(dateDocRef);
@@ -1392,25 +1815,25 @@
          * Reusable function to generate the CSV content string
          * @param {string} dateStr - The date for the report
          * @param {object} statuses - The status object { userId: { status } }
-         * @param {Array} usersToInclude - The pre-filtered list of users
-         * @param {string} gender - The gender for the report header
+         * @param {Array} allUsersList - ALL users (boys and girls)
+         * @param {string} filterGender - The gender to *display* in the main tables
          * @returns {string} The CSV content
          */
-        function generateCSVContent(dateStr, statuses, usersToInclude, gender) {
+        function generateCSVContent(dateStr, statuses, allUsersList, filterGender) {
             let csvContent = "";
-            const summary = { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0 };
+            const usersToInclude = allUsersList.filter(u => u.gender === filterGender);
 
             // Add Header Info
             csvContent += `SMC Meal Roster\r\n`;
             csvContent += `Date: ${dateStr}\r\n`;
-            csvContent += `Gender: ${gender}\r\n\r\n`;
+            csvContent += `Gender Filter: ${filterGender}\r\n\r\n`;
 
-            // Process each batch
+            // Process each batch for the FILTERED gender
             BATCHES.forEach(batch => {
                 const batchUsers = usersToInclude.filter(u => u.batch == batch);
                 if (batchUsers.length === 0) return;
 
-                csvContent += `Batch ${batch}\r\n`;
+                csvContent += `Batch ${batch} (${filterGender})\r\n`;
                 csvContent += "Name,Deposit,Lunch,Dinner,Mutton,Egg (Fish),Egg (Poultry)\r\n";
 
                 batchUsers.forEach(user => {
@@ -1420,29 +1843,41 @@
                     const mutton = status.mutton ? "Yes" : "";
                     const egg_fish = status.egg_fish ? "Yes" : "";
                     const egg_poltry = status.egg_poltry ? "Yes" : "";
-
-                    // Add to summary
-                    if (status.lunch) summary.lunch++;
-                    if (status.dinner) summary.dinner++;
-                    if (status.mutton) summary.mutton++;
-                    if (status.egg_fish) summary.egg_fish++;
-                    if (status.egg_poltry) summary.egg_poltry++;
                     
-                    // Add row (quoting all fields to handle potential commas in names)
-                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}"\r\n`; // FIX: Was mMutton
+                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}"\r\n`;
                 });
 
                 csvContent += "\r\n"; // Add space between batches
             });
 
-            // Add Summary
-            csvContent += "Summary\r\n";
-            csvContent += "Item,Total\r\n";
-            csvContent += `Total Lunch,${summary.lunch}\r\n`;
-            csvContent += `Total Dinner,${summary.dinner}\r\n`;
-            csvContent += `Total Mutton,${summary.mutton}\r\n`;
-            csvContent += `Total Egg (Fish),${summary.egg_fish}\r\n`;
-            csvContent += `Total Egg (Poultry),${summary.egg_poltry}\r\n`;
+            // --- NEW: Comprehensive Daily Summary ---
+            const summary = {
+                boys: { lunch: 0, dinner: 0 },
+                girls: { lunch: 0, dinner: 0 },
+                combined: { lunch: 0, dinner: 0 }
+            };
+
+            for (const user of allUsersList) {
+                const status = statuses[user.id] || {};
+                const hasLunch = status.lunch === "Lunch" || status.lunch === "Served-Lunch";
+                const hasDinner = status.dinner === "Dinner" || status.dinner === "Served-Dinner";
+
+                if (user.gender === 'Boy') {
+                    if (hasLunch) summary.boys.lunch++;
+                    if (hasDinner) summary.boys.dinner++;
+                } else if (user.gender === 'Girl') {
+                    if (hasLunch) summary.girls.lunch++;
+                    if (hasDinner) summary.girls.dinner++;
+                }
+            }
+            summary.combined.lunch = summary.boys.lunch + summary.girls.lunch;
+            summary.combined.dinner = summary.boys.dinner + summary.girls.dinner;
+
+            csvContent += "Daily Summary (All Genders)\r\n";
+            csvContent += "Category,Total Lunch,Total Dinner\r\n";
+            csvContent += `Total Boys,${summary.boys.lunch},${summary.boys.dinner}\r\n`;
+            csvContent += `Total Girls,${summary.girls.lunch},${summary.girls.dinner}\r\n`;
+            csvContent += `Combined Total,${summary.combined.lunch},${summary.combined.dinner}\r\n`;
             
             return csvContent;
         }
@@ -1471,5 +1906,3 @@
 
 </body>
 </html>
-
-
