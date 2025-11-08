@@ -1753,7 +1753,7 @@
                 });
 
                 // 4. Build preview data
-                billingPreviewTable.innerHTML = '';
+                billingPreviewTable.innerHTML = ''; // Clear the table first
                 for (const user of allUsers) {
                     const totals = monthlyTotals[user.id];
                     const totalMeals = totals.totalMeals;
@@ -1765,27 +1765,62 @@
                         id: user.id,
                         name: user.name,
                         gender: user.gender,
+                        batch: user.batch, // <-- FIX: Added user.batch here
                         totalMeals,
                         totalBill,
                         oldDeposit,
                         newDeposit
                     };
                     billingPreviewData.push(previewEntry); // Save for confirmation step
-
-                    // Add to table
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td class="py-3 px-4 text-sm font-medium text-gray-900">${user.name}</td>
-                        <td class="py-3 px-4 text-sm text-gray-700">${user.gender}</td>
-                        <td class="py-3 px-4 text-sm text-gray-700">${totalMeals}</td>
-                        <td class="py-3 px-4 text-sm text-red-600 font-medium">${totalBill} Tk</td>
-                        <td class="py-3 px-4 text-sm text-gray-700">${oldDeposit} Tk</td>
-                        <td class="py-3 px-4 text-sm ${newDeposit < 0 ? 'text-red-600' : 'text-green-600'} font-bold">${newDeposit} Tk</td>
-                    `;
-                    billingPreviewTable.appendChild(tr);
                 }
 
-                // 5. Show preview
+                // 5. NEW: Populate table grouped by Gender, then Batch
+                const genders = ['Boy', 'Girl'];
+                
+                genders.forEach(gender => {
+                    // Add a main gender header
+                    const genderHeaderRow = document.createElement('tr');
+                    genderHeaderRow.className = 'bg-gray-200 sticky top-0'; // Sticky for gender
+                    genderHeaderRow.innerHTML = `<td colspan="6" class="py-2 px-4 text-base font-bold text-gray-800">${gender}s</td>`;
+                    billingPreviewTable.appendChild(genderHeaderRow);
+
+                    let genderHasEntries = false;
+                    BATCHES.forEach(batch => {
+                        const batchEntries = billingPreviewData.filter(entry => entry.gender === gender && entry.batch === batch);
+                        
+                        if (batchEntries.length > 0) {
+                            genderHasEntries = true;
+                            // Add a batch sub-header
+                            const batchHeaderRow = document.createElement('tr');
+                            batchHeaderRow.className = 'bg-gray-50 sticky top-8'; // Sticky for batch (below gender)
+                            batchHeaderRow.innerHTML = `<td colspan="6" class="py-2 px-4 text-sm font-semibold text-gray-700">Batch ${batch}</td>`;
+                            billingPreviewTable.appendChild(batchHeaderRow);
+
+                            // Add user rows for this batch
+                            batchEntries.forEach(entry => {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `
+                                    <td class="py-3 px-4 text-sm font-medium text-gray-900">${entry.name}</td>
+                                    <td class="py-3 px-4 text-sm text-gray-700">${entry.gender}</td>
+                                    <td class="py-3 px-4 text-sm text-gray-700">${entry.totalMeals}</td>
+                                    <td class="py-3 px-4 text-sm text-red-600 font-medium">${entry.totalBill} Tk</td>
+                                    <td class="py-3 px-4 text-sm text-gray-700">${entry.oldDeposit} Tk</td>
+                                    <td class="py-3 px-4 text-sm ${entry.newDeposit < 0 ? 'text-red-600' : 'text-green-600'} font-bold">${entry.newDeposit} Tk</td>
+                                `;
+                                billingPreviewTable.appendChild(tr);
+                            });
+                        }
+                    });
+
+                    if (!genderHasEntries) {
+                        const noDataRow = document.createElement('tr');
+                        noDataRow.innerHTML = `<td colspan="6" class="py-3 px-4 text-sm text-gray-500 italic">No users found for ${gender}s.</td>`;
+                        billingPreviewTable.appendChild(noDataRow);
+                    }
+                });
+
+
+                // 6. Show preview
                 billingPreviewMonth.textContent = monthString;
                 billingStep1.classList.add('hidden');
                 billingStep2.classList.remove('hidden');
@@ -1950,7 +1985,7 @@
         // --- CSV DOWNLOAD HANDLERS ---
 
         /**
-         * NEW: Downloads the generated billing preview as a CSV file
+         * NEW: Downloads the generated billing preview as a CSV file, grouped by gender and batch
          */
         function handleDownloadBillingCSV() {
             if (billingPreviewData.length === 0) {
@@ -1967,17 +2002,63 @@
             csvContent += `SMC Monthly Bill Report\r\n`;
             csvContent += `Month: ${monthString}\r\n`;
             csvContent += `Meal Rate: ${currentMealRate} Tk\r\n\r\n`;
-
-            // Table Header
-            csvContent += "Name,Gender,Total Meals,Total Bill (Tk),Old Deposit (Tk),New Deposit (Tk)\r\n";
-
-            // Table Rows
-            for (const entry of billingPreviewData) {
-                csvContent += `"${entry.name}","${entry.gender}",${entry.totalMeals},${entry.totalBill},${entry.oldDeposit},${entry.newDeposit}\r\n`;
-            }
             
+            const tableHeader = "Name,Gender,Total Meals,Total Bill (Tk),Old Deposit (Tk),New Deposit (Tk)\r\n";
+            
+            const genders = ['Boy', 'Girl'];
+            const summaries = {
+                Boy: { totalMeals: 0, totalBill: 0, oldDeposit: 0, newDeposit: 0 },
+                Girl: { totalMeals: 0, totalBill: 0, oldDeposit: 0, newDeposit: 0 },
+                Combined: { totalMeals: 0, totalBill: 0, oldDeposit: 0, newDeposit: 0 }
+            };
+
+            genders.forEach(gender => {
+                csvContent += `${gender}s\r\n`; // Main Header (Boys/Girls)
+                
+                let genderHasEntries = false;
+                
+                BATCHES.forEach(batch => {
+                    const batchEntries = billingPreviewData.filter(entry => entry.gender === gender && entry.batch === batch);
+                    
+                    if (batchEntries.length > 0) {
+                        genderHasEntries = true;
+                        csvContent += `Batch ${batch}\r\n`; // Batch Header
+                        csvContent += tableHeader; // Table Header
+                        
+                        batchEntries.forEach(entry => {
+                            csvContent += `"${entry.name}","${entry.gender}",${entry.totalMeals},${entry.totalBill},${entry.oldDeposit},${entry.newDeposit}\r\n`;
+                            
+                            // Add to summaries
+                            const gSummary = summaries[gender];
+                            gSummary.totalMeals += entry.totalMeals;
+                            gSummary.totalBill += entry.totalBill;
+                            gSummary.oldDeposit += entry.oldDeposit;
+                            gSummary.newDeposit += entry.newDeposit;
+                            
+                            summaries.Combined.totalMeals += entry.totalMeals;
+                            summaries.Combined.totalBill += entry.totalBill;
+                            summaries.Combined.oldDeposit += entry.oldDeposit;
+                            summaries.Combined.newDeposit += entry.newDeposit;
+                        });
+                        csvContent += "\r\n"; // Blank row after batch
+                    }
+                });
+                
+                if (!genderHasEntries) {
+                    csvContent += "No users found for this gender.\r\n";
+                }
+                csvContent += "\r\n"; // Blank row after gender section
+            });
+            
+            // Add Summary Section
+            csvContent += "Monthly Summary\r\n";
+            csvContent += "Category,Total Meals,Total Bill (Tk),Total Old Deposit (Tk),Total New Deposit (Tk)\r\n";
+            csvContent += `Boys,${summaries.Boy.totalMeals},${summaries.Boy.totalBill},${summaries.Boy.oldDeposit},${summaries.Boy.newDeposit}\r\n`;
+            csvContent += `Girls,${summaries.Girl.totalMeals},${summaries.Girl.totalBill},${summaries.Girl.oldDeposit},${summaries.Girl.newDeposit}\r\n`;
+            csvContent += `Combined,${summaries.Combined.totalMeals},${summaries.Combined.totalBill},${summaries.Combined.oldDeposit},${summaries.Combined.newDeposit}\r\n`;
+
             // Trigger download
-            triggerCSVDownload(csvContent, `smc-billing-report-${monthString}.csv`);
+            triggerCSVDownload(csvContent, `smc-billing-report-${monthString}-grouped.csv`);
         }
 
         /**
