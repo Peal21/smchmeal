@@ -159,6 +159,11 @@
                                         <input type="checkbox" id="update-egg-poltry" class="h-4 w-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500">
                                         <span class="ml-2 text-gray-700">Egg (Poultry)</span>
                                     </label>
+                                    <!-- NEW: Egg Poach Checkbox -->
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="update-egg-poach" class="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
+                                        <span class="ml-2 text-gray-700">Egg Poach</span>
+                                    </label>
                                 </div>
                                 <button id="user-update-save-btn" class="mt-5 w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400">
                                     Update Save Korun
@@ -206,13 +211,12 @@
                                     <select id="admin-update-name" class="w-full border-gray-300 rounded-lg shadow-sm" required disabled>
                                         <option value="">Select Name</option>
                                     </select>
-                                    <!-- MODIFIED: Changed placeholder and name -->
                                     <input type="number" id="admin-deposit-add-amount" placeholder="Amount to ADD (e.g. 1000)" class="w-full border-gray-300 rounded-lg shadow-sm" required>
                                     <button type="submit" class="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700">Add Deposit</button>
                                 </form>
                             </div>
                             
-                            <!-- NEW: Set Meal Rate -->
+                            <!-- Set Meal Rate -->
                             <div class="bg-white p-5 rounded-lg shadow-md">
                                 <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">Admin: Set Meal Rate</h2>
                                 <div class="space-y-4">
@@ -222,7 +226,7 @@
                                 </div>
                             </div>
                             
-                            <!-- NEW: Generate Monthly Bill -->
+                            <!-- Generate Monthly Bill -->
                             <div class="bg-white p-5 rounded-lg shadow-md">
                                 <h2 class="text-lg font-semibold text-gray-800 border-b pb-3 mb-4">Admin: Monthly Billing</h2>
                                 <div class="space-y-4">
@@ -231,12 +235,16 @@
                                 </div>
                             </div>
 
-                            <!-- NEW: Reset All Deposits (DANGER ZONE) -->
+                            <!-- Reset All Deposits (DANGER ZONE) -->
                             <div class="bg-white p-5 rounded-lg shadow-md border-2 border-red-500">
                                 <h2 class="text-lg font-semibold text-red-700 border-b pb-3 mb-4">Admin: DANGER ZONE</h2>
                                 <div class="space-y-4">
                                     <p class="text-sm text-gray-600">This will set ALL user deposits (Boys & Girls) to 0. This cannot be undone.</p>
                                     <button id="admin-reset-deposits-btn" class="w-full bg-red-800 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-900">Reset All Deposits to 0</button>
+                                
+                                    <!-- NEW: Reset Meal Counts Button -->
+                                    <p class="text-sm text-gray-600 mt-4 pt-4 border-t border-red-300">This will <strong>DELETE ALL</strong> meal records (Lunch, Dinner, Mutton, etc.) for the <strong>ENTIRE CURRENT MONTH</strong>. This is irreversible.</p>
+                                    <button id="admin-reset-meals-btn" class="w-full bg-red-800 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-900">Reset Current Month's Meals</button>
                                 </div>
                             </div>
 
@@ -247,7 +255,8 @@
                 <!-- Right Column (Data) -->
                 <section id="right-column" class="lg:col-span-3 space-y-6">
                     <!-- Daily Total Cards -->
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <!-- UPDATED: Added grid-cols-3 and lg:grid-cols-6 for new card -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                         <div class="bg-white p-4 rounded-lg shadow-md text-center">
                             <h3 class="text-sm font-medium text-gray-500">Total Lunch</h3>
                             <p id="total-lunch" class="text-3xl font-bold text-gray-900">-</p>
@@ -267,6 +276,11 @@
                         <div class="bg-white p-4 rounded-lg shadow-md text-center">
                             <h3 class="text-sm font-medium text-gray-500">Total Egg (Poultry)</h3>
                             <p id="total-egg-poltry" class="text-3xl font-bold text-gray-900">-</p>
+                        </div>
+                        <!-- NEW: Egg Poach Card -->
+                        <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-sm font-medium text-gray-500">Total Egg Poach</h3>
+                            <p id="total-egg-poach" class="text-3xl font-bold text-gray-900">-</p>
                         </div>
                     </div>
 
@@ -460,11 +474,15 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="mt-4 flex space-x-4">
-                    <button id="billing-confirm-btn" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">
+                <!-- UPDATED: Button Layout -->
+                <div class="mt-4 flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4">
+                    <button id="billing-confirm-btn" class="w-full md:w-1/2 bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">
                         Confirm & Update All Deposits
                     </button>
-                    <button id="billing-cancel-btn" class="w-1/3 bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">
+                    <button id="billing-download-csv-btn" class="w-full md:w-1/4 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">
+                        Download CSV
+                    </button>
+                    <button id="billing-cancel-btn" class="w-full md:w-1/4 bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">
                         Cancel
                     </button>
                 </div>
@@ -476,7 +494,7 @@
         </div>
     </div>
 
-    <!-- NEW: Reset Deposits Confirmation Modal -->
+    <!-- Reset Deposits Confirmation Modal -->
     <div id="reset-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] hidden p-4">
         <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
             <h2 class="text-xl font-semibold text-red-700 mb-4">Are you absolutely sure?</h2>
@@ -486,6 +504,20 @@
             <div class="flex space-x-4">
                 <button id="reset-confirm-final-btn" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 disabled:bg-gray-400" disabled>Confirm Reset</button>
                 <button id="reset-confirm-cancel-btn" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NEW: Reset MEALS Confirmation Modal -->
+    <div id="reset-meals-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] hidden p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-xl font-semibold text-red-700 mb-4">Are you absolutely sure?</h2>
+            <p class="text-gray-700 mb-4">This will <strong>DELETE ALL</strong> meal records (Lunch, Dinner, Mutton, etc.) for the <strong>ENTIRE CURRENT MONTH</strong>. This action cannot be undone.</p>
+            <p class="text-gray-700 mb-4">To confirm, please type "RESET" in the box below.</p>
+            <input type="text" id="reset-meals-confirm-input" class="w-full border-gray-300 rounded-lg shadow-sm mb-4" placeholder="RESET">
+            <div class="flex space-x-4">
+                <button id="reset-meals-confirm-final-btn" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 disabled:bg-gray-400" disabled>Confirm Delete All Meals</button>
+                <button id="reset-meals-confirm-cancel-btn" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
             </div>
         </div>
     </div>
@@ -562,6 +594,15 @@
 
         const BATCHES = ['10', '11', '12', '13', '14'];
 
+        // --- CARRY-OVER FIX: State for initial load ---
+        let appReadyState = {
+            usersLoaded: false,
+            settingsLoaded: false,
+            initialFetchDone: false
+        };
+        let initialDateOnLoad = getTomorrowString();
+        // -----------------------------------------------
+
         // --- DOM ELEMENTS ---
         const datePicker = document.getElementById('date-picker');
         const mainContainer = document.querySelector('main .grid');
@@ -587,7 +628,8 @@
             dinner: document.getElementById('update-dinner'),
             mutton: document.getElementById('update-mutton'),
             egg_fish: document.getElementById('update-egg-fish'),
-            egg_poltry: document.getElementById('update-egg-poltry')
+            egg_poltry: document.getElementById('update-egg-poltry'),
+            egg_poach: document.getElementById('update-egg-poach') // NEW
         };
         
         const adminPanel = document.getElementById('admin-panel');
@@ -622,6 +664,7 @@
         const billingPreviewTable = document.getElementById('billing-preview-table');
         const billingConfirmBtn = document.getElementById('billing-confirm-btn');
         const billingCancelBtn = document.getElementById('billing-cancel-btn');
+        const billingDownloadCsvBtn = document.getElementById('billing-download-csv-btn'); // NEW
 
         // NEW: Reset Elements
         const adminResetDepositsBtn = document.getElementById('admin-reset-deposits-btn');
@@ -629,6 +672,13 @@
         const resetConfirmInput = document.getElementById('reset-confirm-input');
         const resetConfirmFinalBtn = document.getElementById('reset-confirm-final-btn');
         const resetConfirmCancelBtn = document.getElementById('reset-confirm-cancel-btn');
+        
+        // NEW: Reset Meals Elements
+        const adminResetMealsBtn = document.getElementById('admin-reset-meals-btn');
+        const resetMealsConfirmModal = document.getElementById('reset-meals-confirm-modal');
+        const resetMealsConfirmInput = document.getElementById('reset-meals-confirm-input');
+        const resetMealsConfirmFinalBtn = document.getElementById('reset-meals-confirm-final-btn');
+        const resetMealsConfirmCancelBtn = document.getElementById('reset-meals-confirm-cancel-btn');
 
 
         // --- HELPER FUNCTIONS ---
@@ -785,7 +835,7 @@
 
         function setupApp() {
             // 1. Set default date to TOMORROW
-            selectedDate = getTomorrowString();
+            selectedDate = initialDateOnLoad;
             datePicker.value = selectedDate;
             historyDatePicker.value = getTodayString(); // Default history to today
 
@@ -798,9 +848,22 @@
             // 4. NEW: Fetch initial app settings (meal rate)
             fetchAppSettings();
 
-            // 5. Fetch data for the default date (this triggers the whole data pipeline)
-            fetchDataForSelectedDate();
+            // 5. CARRY-OVER FIX: DO NOT fetch data here. Wait for listeners.
+            // fetchDataForSelectedDate(); // <-- REMOVED
         }
+        
+        // --- CARRY-OVER FIX: New function to gate initial fetch ---
+        /**
+         * Checks if all initial data (users, settings) is loaded, then runs the first fetch.
+         */
+        function checkAndRunInitialFetch() {
+            if (appReadyState.usersLoaded && appReadyState.settingsLoaded && !appReadyState.initialFetchDone) {
+                appReadyState.initialFetchDone = true; // Prevent this from running more than once
+                console.log("App is ready. Running initial data fetch...");
+                fetchDataForSelectedDate(initialDateOnLoad);
+            }
+        }
+
 
         // --- EVENT LISTENERS ---
         
@@ -856,6 +919,7 @@
             });
             billingGeneratePreviewBtn.addEventListener('click', handleGenerateBillPreview);
             billingConfirmBtn.addEventListener('click', handleConfirmBillUpdate);
+            billingDownloadCsvBtn.addEventListener('click', handleDownloadBillingCSV); // NEW LISTENER
 
             // NEW: Reset Listeners
             adminResetDepositsBtn.addEventListener('click', () => {
@@ -868,6 +932,19 @@
                 resetConfirmFinalBtn.disabled = e.target.value !== 'RESET';
             });
             resetConfirmFinalBtn.addEventListener('click', handleResetAllDeposits);
+
+            // NEW: Reset Meals Listeners
+            adminResetMealsBtn.addEventListener('click', () => {
+                resetMealsConfirmModal.classList.remove('hidden');
+                resetMealsConfirmInput.value = '';
+                resetMealsConfirmFinalBtn.disabled = true;
+            });
+            resetMealsConfirmCancelBtn.addEventListener('click', () => resetMealsConfirmModal.classList.add('hidden'));
+            resetMealsConfirmInput.addEventListener('input', (e) => {
+                resetMealsConfirmFinalBtn.disabled = e.target.value !== 'RESET';
+            });
+            resetMealsConfirmFinalBtn.addEventListener('click', handleResetCurrentMonthMeals);
+
 
             // Add listeners for dynamic content (serve buttons)
             // We use event delegation on the roster area
@@ -896,9 +973,17 @@
                 // Sort users by name
                 allUsers.sort((a, b) => a.name.localeCompare(b.name));
                 
-                // Re-populate dropdowns and re-render dashboard
+                // Re-populate dropdowns
                 populateUserLoginDropdown();
                 populateAdminNameDropdown();
+                
+                // CARRY-OVER FIX: Mark users as loaded and trigger initial fetch
+                if (!appReadyState.usersLoaded) {
+                    appReadyState.usersLoaded = true;
+                    checkAndRunInitialFetch();
+                }
+
+                // Render dashboard (will be called *after* initial fetch is done)
                 renderDashboard(); 
             }, (error) => {
                 console.error("Error listening to users: ", error);
@@ -917,13 +1002,19 @@
                     currentMealRate = settings.mealRate || 0;
                     adminMealRateInput.value = currentMealRate;
                     billingCurrentRate.textContent = `Tk ${currentMealRate}`;
-                    console.log(`Updated meal rate to: ${currentMealRate}`);
                 } else {
                     console.log("No settings doc found. Defaulting meal rate to 0.");
                     currentMealRate = 0;
                     adminMealRateInput.value = 0;
                     billingCurrentRate.textContent = "Not Set";
                 }
+                
+                // CARRY-OVER FIX: Mark settings as loaded and trigger initial fetch
+                if (!appReadyState.settingsLoaded) {
+                    appReadyState.settingsLoaded = true;
+                    checkAndRunInitialFetch();
+                }
+
             }, (error) => {
                 console.error("Error fetching settings:", error);
             });
@@ -932,9 +1023,11 @@
         /**
          * Fetches all data (and sets up listeners) for the currently selected date.
          * This is the main data pipeline trigger.
+         * CARRY-OVER FIX: Now accepts a date parameter
+         * @param {string} dateToFetch - The date to fetch data for (e.g., "2025-11-08")
          */
-        async function fetchDataForSelectedDate() {
-            console.log(`Fetching data for: ${selectedDate}`);
+        async function fetchDataForSelectedDate(dateToFetch) {
+            console.log(`Fetching data for: ${dateToFetch}`);
             
             // 1. Detach old date listener
             if (unsubscribeDateStatus) {
@@ -942,15 +1035,19 @@
                 unsubscribeDateStatus = null;
             }
 
-            // Reset local state
+            // 2. Reset local state
             dateStatuses = {};
             monthlyTotals = {};
+            
+            // 3. CARRY-OVER FIX: Update global selectedDate *after* checks
+            selectedDate = dateToFetch;
 
             try {
-                // 2. CRITICAL: Check and carry over statuses from the previous day
+                // 4. CRITICAL: Check and carry over statuses from the previous day
+                // This will now run *after* allUsers is populated.
                 await checkAndCarryOverStatuses();
 
-                // 3. Listen to the status document for the *new* selected date
+                // 5. Listen to the status document for the *new* selected date
                 const dateDocRef = doc(db, "roster-status-by-date", selectedDate);
                 unsubscribeDateStatus = onSnapshot(dateDocRef, (docSnap) => {
                     if (docSnap.exists()) {
@@ -967,10 +1064,10 @@
                     console.error("Error listening to date status: ", error);
                 });
 
-                // 4. Fetch monthly totals for all users
+                // 6. Fetch monthly totals for all users
                 await fetchMonthlyTotals();
 
-                // 5. Final render (in case monthly totals came after status render)
+                // 7. Final render (in case monthly totals came after status render)
                 renderDashboard();
 
             } catch (error) {
@@ -983,6 +1080,12 @@
          * NEW: Skips carry-over on the 1st of the month.
          */
         async function checkAndCarryOverStatuses() {
+            // CARRY-OVER FIX: Check if users are loaded. If not, stop.
+            if (!appReadyState.usersLoaded) {
+                console.warn("checkAndCarryOverStatuses called before users were loaded. Aborting.");
+                return;
+            }
+
             // NEW: Check if it's the 1st of the month
             const [year, month, day] = selectedDate.split('-');
             if (day === '01') {
@@ -1101,6 +1204,12 @@
          * Main render function. Redraws the dashboard based on global state.
          */
         function renderDashboard() {
+            // CARRY-OVER FIX: Don't render if users aren't loaded
+            if (!appReadyState.usersLoaded) {
+                console.log("RenderDashboard: Users not loaded, skipping render.");
+                return;
+            }
+
             // 1. Clear all batch tables
             BATCHES.forEach(batch => {
                 const tbody = document.getElementById(`roster-batch-${batch}`);
@@ -1111,7 +1220,8 @@
             const filteredUsers = allUsers.filter(u => u.gender === selectedGender);
 
             // 3. Init daily totals
-            const dailyTotals = { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0 };
+            // UPDATED: Added egg_poach
+            const dailyTotals = { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0, egg_poach: 0 };
             
             // 4. Loop through filtered users and build table rows
             for (const user of filteredUsers) {
@@ -1123,6 +1233,7 @@
                 if (userStatus.mutton) dailyTotals.mutton++;
                 if (userStatus.egg_fish) dailyTotals.egg_fish++;
                 if (userStatus.egg_poltry) dailyTotals.egg_poltry++;
+                if (userStatus.egg_poach) dailyTotals.egg_poach++; // NEW
 
                 // 4b. Find the correct batch table
                 const tbody = document.getElementById(`roster-batch-${user.batch}`);
@@ -1158,6 +1269,7 @@
             document.getElementById('total-mutton').textContent = dailyTotals.mutton;
             document.getElementById('total-egg-fish').textContent = dailyTotals.egg_fish;
             document.getElementById('total-egg-poltry').textContent = dailyTotals.egg_poltry;
+            document.getElementById('total-egg-poach').textContent = dailyTotals.egg_poach; // NEW
         }
 
         /**
@@ -1202,6 +1314,10 @@
             if (status.egg_poltry) {
                 html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-yellow-100 text-yellow-800">Egg (Poultry)</span>`;
             }
+            // NEW: Egg Poach Badge
+            if (status.egg_poach) {
+                html += `<span class="inline-block rounded-full px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800">Egg Poach</span>`;
+            }
 
             return html;
         }
@@ -1212,8 +1328,8 @@
          * Handles the date picker change event
          */
         function handleDateChange(e) {
-            selectedDate = e.target.value;
-            fetchDataForSelectedDate();
+            // CARRY-OVER FIX: Call fetchDataForSelectedDate with the new date
+            fetchDataForSelectedDate(e.target.value);
             checkUserDateLock(); // Check lock for user
         }
 
@@ -1371,6 +1487,7 @@
                 userCheckboxes.mutton.checked = !!status.mutton;
                 userCheckboxes.egg_fish.checked = !!status.egg_fish;
                 userCheckboxes.egg_poltry.checked = !!status.egg_poltry;
+                userCheckboxes.egg_poach.checked = !!status.egg_poach; // NEW
                 
                 // Check if user is allowed to update
                 checkUserDateLock();
@@ -1425,6 +1542,7 @@
                 mutton: userCheckboxes.mutton.checked,
                 egg_fish: userCheckboxes.egg_fish.checked,
                 egg_poltry: userCheckboxes.egg_poltry.checked,
+                egg_poach: userCheckboxes.egg_poach.checked // NEW
             };
 
             try {
@@ -1762,8 +1880,105 @@
             
             resetConfirmFinalBtn.classList.remove('btn-loading');
         }
+        
+        /**
+         * NEW: DANGEROUS - Deletes all meal status documents for the current month
+         */
+        async function handleResetCurrentMonthMeals() {
+            if (resetMealsConfirmInput.value !== 'RESET') {
+                showCustomAlert("Confirmation text is incorrect.", "error");
+                return;
+            }
+
+            resetMealsConfirmFinalBtn.classList.add('btn-loading');
+            
+            try {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0'); // "01", "02", ..., "11", "12"
+                
+                const monthString = `${year}-${month}`;
+                const firstDay = `${monthString}-01`;
+                const lastDayDate = new Date(year, today.getMonth() + 1, 0); // Last day of current month
+                const lastDay = `${monthString}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
+
+                console.warn(`DELETING all meal statuses between ${firstDay} and ${lastDay}`);
+
+                const batch = writeBatch(db);
+
+                // 1. Find all docs in the current month
+                const q = query(collection(db, "roster-status-by-date"),
+                    where(documentId(), ">=", firstDay),
+                    where(documentId(), "<=", lastDay)
+                );
+                
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    showCustomAlert("No meal records found for the current month. Nothing to delete.", "info");
+                    resetMealsConfirmModal.classList.add('hidden');
+                    resetMealsConfirmFinalBtn.classList.remove('btn-loading');
+                    return;
+                }
+
+                // 2. Add a delete operation for each doc to the batch
+                querySnapshot.forEach((doc) => {
+                    batch.delete(doc.ref);
+                });
+                
+                // 3. Commit the batch deletion
+                await batch.commit();
+                
+                logAudit(`Admin (${auth.currentUser.uid})`, `ADMIN: DANGER - Reset all meal counts for ${monthString}`, {}, getTodayString());
+                showCustomAlert(`Successfully deleted ${querySnapshot.size} days of meal records for ${monthString}.`, "success");
+                
+                // 4. Refresh the data for the currently selected date to reflect the change
+                // This will trigger a carry-over from the *previous* month (if applicable)
+                // or show a blank slate if the selected date was the 1st.
+                fetchDataForSelectedDate(selectedDate);
+
+            } catch (error) {
+                console.error("Error resetting current month meals:", error);
+                showCustomAlert("CRITICAL ERROR: Could not reset meal records. See console.", "error");
+            }
+            
+            resetMealsConfirmModal.classList.add('hidden');
+            resetMealsConfirmFinalBtn.classList.remove('btn-loading');
+        }
+
 
         // --- CSV DOWNLOAD HANDLERS ---
+
+        /**
+         * NEW: Downloads the generated billing preview as a CSV file
+         */
+        function handleDownloadBillingCSV() {
+            if (billingPreviewData.length === 0) {
+                showCustomAlert("No billing data to download. Generate a preview first.", "error");
+                return;
+            }
+
+            const monthString = billingMonthInput.value; // "YYYY-MM"
+            console.log(`Downloading billing CSV for ${monthString}`);
+
+            let csvContent = "";
+            
+            // Header Info
+            csvContent += `SMC Monthly Bill Report\r\n`;
+            csvContent += `Month: ${monthString}\r\n`;
+            csvContent += `Meal Rate: ${currentMealRate} Tk\r\n\r\n`;
+
+            // Table Header
+            csvContent += "Name,Gender,Total Meals,Total Bill (Tk),Old Deposit (Tk),New Deposit (Tk)\r\n";
+
+            // Table Rows
+            for (const entry of billingPreviewData) {
+                csvContent += `"${entry.name}","${entry.gender}",${entry.totalMeals},${entry.totalBill},${entry.oldDeposit},${entry.newDeposit}\r\n`;
+            }
+            
+            // Trigger download
+            triggerCSVDownload(csvContent, `smc-billing-report-${monthString}.csv`);
+        }
 
         /**
          * Triggers download for the *current* main selected date
@@ -1834,7 +2049,8 @@
                 if (batchUsers.length === 0) return;
 
                 csvContent += `Batch ${batch} (${filterGender})\r\n`;
-                csvContent += "Name,Deposit,Lunch,Dinner,Mutton,Egg (Fish),Egg (Poultry)\r\n";
+                // NEW: Added Egg Poach
+                csvContent += "Name,Deposit,Lunch,Dinner,Mutton,Egg (Fish),Egg (Poultry),Egg Poach\r\n";
 
                 batchUsers.forEach(user => {
                     const status = statuses[user.id] || {};
@@ -1843,44 +2059,55 @@
                     const mutton = status.mutton ? "Yes" : "";
                     const egg_fish = status.egg_fish ? "Yes" : "";
                     const egg_poltry = status.egg_poltry ? "Yes" : "";
+                    const egg_poach = status.egg_poach ? "Yes" : ""; // NEW
                     
-                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}"\r\n`;
+                    csvContent += `"${user.name}",${user.deposit},"${lunch}","${dinner}","${mutton}","${egg_fish}","${egg_poltry}","${egg_poach}"\r\n`;
                 });
 
                 csvContent += "\r\n"; // Add space between batches
             });
 
             // --- NEW: Comprehensive Daily Summary ---
+            // UPDATED: Added egg_poach
             const summary = {
-                boys: { lunch: 0, dinner: 0 },
-                girls: { lunch: 0, dinner: 0 },
-                combined: { lunch: 0, dinner: 0 }
+                boys: { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0, egg_poach: 0 },
+                girls: { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0, egg_poach: 0 },
+                combined: { lunch: 0, dinner: 0, mutton: 0, egg_fish: 0, egg_poltry: 0, egg_poach: 0 }
             };
 
             for (const user of allUsersList) {
                 const status = statuses[user.id] || {};
                 const hasLunch = status.lunch === "Lunch" || status.lunch === "Served-Lunch";
                 const hasDinner = status.dinner === "Dinner" || status.dinner === "Served-Dinner";
+                const hasMutton = status.mutton;
+                const hasEggFish = status.egg_fish;
+                const hasEggPoltry = status.egg_poltry;
+                const hasEggPoach = status.egg_poach; // NEW
 
-                if (user.gender === 'Boy') {
-                    if (hasLunch) summary.boys.lunch++;
-                    if (hasDinner) summary.boys.dinner++;
-                } else if (user.gender === 'Girl') {
-                    if (hasLunch) summary.girls.lunch++;
-                    if (hasDinner) summary.girls.dinner++;
-                }
+                const target = user.gender === 'Boy' ? summary.boys : summary.girls;
+
+                if (hasLunch) target.lunch++;
+                if (hasDinner) target.dinner++;
+                if (hasMutton) target.mutton++;
+                if (hasEggFish) target.egg_fish++;
+                if (hasEggPoltry) target.egg_poltry++;
+                if (hasEggPoach) target.egg_poach++; // NEW
             }
-            summary.combined.lunch = summary.boys.lunch + summary.girls.lunch;
-            summary.combined.dinner = summary.boys.dinner + summary.girls.dinner;
+            
+            // Calculate combined totals
+            for(const key of Object.keys(summary.combined)) {
+                summary.combined[key] = summary.boys[key] + summary.girls[key];
+            }
 
             csvContent += "Daily Summary (All Genders)\r\n";
-            csvContent += "Category,Total Lunch,Total Dinner\r\n";
-            csvContent += `Total Boys,${summary.boys.lunch},${summary.boys.dinner}\r\n`;
-            csvContent += `Total Girls,${summary.girls.lunch},${summary.girls.dinner}\r\n`;
-            csvContent += `Combined Total,${summary.combined.lunch},${summary.combined.dinner}\r\n`;
+            csvContent += "Category,Total Lunch,Total Dinner,Total Mutton,Total Egg (Fish),Total Egg (Poultry),Total Egg Poach\r\n";
+            csvContent += `Total Boys,${summary.boys.lunch},${summary.boys.dinner},${summary.boys.mutton},${summary.boys.egg_fish},${summary.boys.egg_poltry},${summary.boys.egg_poach}\r\n`;
+            csvContent += `Total Girls,${summary.girls.lunch},${summary.girls.dinner},${summary.girls.mutton},${summary.girls.egg_fish},${summary.girls.egg_poltry},${summary.girls.egg_poach}\r\n`;
+            csvContent += `Combined Total,${summary.combined.lunch},${summary.combined.dinner},${summary.combined.mutton},${summary.combined.egg_fish},${summary.combined.egg_poltry},${summary.combined.egg_poach}\r\n`;
             
             return csvContent;
         }
+
 
         /**
          * Triggers the browser to download a CSV file
